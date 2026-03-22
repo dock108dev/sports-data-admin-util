@@ -14,50 +14,9 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-
-
-def _safe_float(val: object) -> float | None:
-    """Coerce a value to float, returning None on failure."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val: object) -> int | None:
-    """Coerce a value to int, returning None on failure."""
-    if val is None:
-        return None
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_minutes(val: object) -> float | None:
-    """Parse NBA minutes string (e.g. 'PT36M12.00S' or '36:12') to float minutes."""
-    if val is None:
-        return None
-    s = str(val)
-    # Handle ISO duration: PT36M12.00S
-    if s.startswith("PT"):
-        import re
-        m = re.match(r"PT(?:(\d+)M)?(?:([\d.]+)S)?", s)
-        if m:
-            mins = int(m.group(1) or 0)
-            secs = float(m.group(2) or 0)
-            return round(mins + secs / 60.0, 2)
-    # Handle MM:SS format
-    if ":" in s:
-        parts = s.split(":")
-        try:
-            return round(int(parts[0]) + int(parts[1]) / 60.0, 2)
-        except (ValueError, IndexError):
-            pass
-    # Try raw float
-    return _safe_float(val)
+from ..utils.math import parse_minutes as _parse_minutes
+from ..utils.math import safe_float as _safe_float
+from ..utils.math import safe_int as _safe_int
 
 
 def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
@@ -148,9 +107,6 @@ def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
     for tr in team_rows_raw:
         is_home = tr.get("is_home")
         if is_home is None:
-            # Determine side from TEAM_ID matching
-            nba_team_id = str(tr.get("TEAM_ID", ""))
-            # Try to match by checking home/away team external refs
             # Default: first row is home, second is away (NBA convention)
             is_home = upserted == 0
 

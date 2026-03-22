@@ -14,20 +14,8 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-
-
-def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
-
-
-def _safe_pct(numerator: float | int, denominator: float | int) -> float | None:
-    """Safe percentage: (numerator / denominator) * 100, or None."""
-    if denominator == 0:
-        return None
-    return (numerator / denominator) * 100
+from ..utils.math import safe_div as _safe_div
+from ..utils.math import safe_pct as _safe_pct
 
 
 def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
@@ -67,7 +55,7 @@ def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
     season = game.season
 
     # Fetch shot data from MoneyPuck
-    from ..live.nhl_advanced import NHLAdvancedStatsFetcher, _safe_div as fetcher_safe_div
+    from ..live.nhl_advanced import NHLAdvancedStatsFetcher
 
     fetcher = NHLAdvancedStatsFetcher()
     try:

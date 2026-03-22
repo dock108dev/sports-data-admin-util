@@ -6,26 +6,11 @@ aggregates into team-level and player-level stats for a single game.
 
 from __future__ import annotations
 
+from ..config import settings
 from ..logging import logger
 from ..utils.cache import APICache
-from ..config import settings
-
-
-def _safe_float(val) -> float | None:
-    """Safely convert a value to float, returning None on failure."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_div(numerator: int | float, denominator: int | float) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
+from ..utils.math import safe_div as _safe_div
+from ..utils.math import safe_float as _safe_float
 
 
 class NFLAdvancedStatsFetcher:

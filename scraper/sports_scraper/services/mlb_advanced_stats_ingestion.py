@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
+from ..utils.math import safe_div as _safe_div
 
 
 def _parse_ip(ip_str: str) -> float:
@@ -122,11 +123,6 @@ def _extract_player_fielding_data(boxscore_raw: dict) -> list[dict]:
     return result
 
 
-def _safe_div(numerator: int | float, denominator: int | float) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
 
 
 def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:

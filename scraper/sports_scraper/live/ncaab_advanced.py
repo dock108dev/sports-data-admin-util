@@ -24,11 +24,7 @@ REGULATION_MINUTES = 40  # 40-minute games (not 48 like NBA)
 STANDARD_TEAM_MINUTES = 200  # 5 players * 40 minutes
 
 
-def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
+from ..utils.math import safe_div as _safe_div  # noqa: E402
 
 
 def _extract_stat(box: dict, key: str, default: int = 0) -> int:
@@ -84,7 +80,6 @@ def _compute_team_four_factors(box: dict, opp_box: dict) -> dict:
     opp_fgm = _extract_stat(opp_box, "fieldGoalsMade")
     opp_fga = _extract_stat(opp_box, "fieldGoalsAttempted")
     opp_tpm = _extract_stat(opp_box, "threePointsMade")
-    opp_ftm = _extract_stat(opp_box, "freeThrowsMade")
     opp_fta = _extract_stat(opp_box, "freeThrowsAttempted")
     opp_orb = _extract_stat(opp_box, "offensiveRebounds")
     opp_drb = _extract_stat(opp_box, "defensiveRebounds")

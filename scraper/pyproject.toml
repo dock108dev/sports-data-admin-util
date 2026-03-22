@@ -67,6 +67,7 @@ omit = [
   "**/live/nfl_helpers.py",
   # Game processors (per-game DB + API calls; tested via integration)
   "**/services/game_processors.py",
+  "**/services/game_processors_*.py",
   # LiveFeedManager (orchestrates live API calls across all leagues)
   "**/live/manager.py",
   # Database models namespace (import-only, requires running DB)

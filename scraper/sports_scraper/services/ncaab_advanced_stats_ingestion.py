@@ -22,13 +22,6 @@ from ..live.ncaab_advanced import NCAABAdvancedStatsFetcher
 from ..logging import logger
 
 
-def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
-
-
 def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
     """Ingest four-factor advanced stats for a single NCAAB game.
 

@@ -230,7 +230,7 @@ def _parse_result_set(data: dict, set_name: str) -> list[dict[str, Any]]:
 
     headers = rs.get("headers", [])
     rows = rs.get("rowSet", [])
-    return [dict(zip(headers, row)) for row in rows]
+    return [dict(zip(headers, row, strict=False)) for row in rows]
 
 
 def parse_advanced_boxscore(data: dict) -> tuple[list[dict], list[dict]]:

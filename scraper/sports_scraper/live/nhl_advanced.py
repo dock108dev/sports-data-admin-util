@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -123,11 +123,6 @@ def _classify_danger(distance: float) -> str:
     return "low"
 
 
-def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
 
 
 class NHLAdvancedStatsFetcher:
@@ -275,13 +270,12 @@ class NHLAdvancedStatsFetcher:
             # so we count it as a blocked shot attempt for the shooting team
 
             # Danger zones (for the shooting team)
-            if event in ("SHOT", "GOAL", "MISS"):
-                if danger == "high":
-                    team_agg.high_danger_shots += 1
-                    opp_agg.high_danger_shots_against += 1
-                    if is_goal:
-                        team_agg.high_danger_goals += 1
-                        opp_agg.high_danger_goals_against += 1
+            if event in ("SHOT", "GOAL", "MISS") and danger == "high":
+                team_agg.high_danger_shots += 1
+                opp_agg.high_danger_shots_against += 1
+                if is_goal:
+                    team_agg.high_danger_goals += 1
+                    opp_agg.high_danger_goals_against += 1
 
         return {"home": home, "away": away}
 
@@ -355,8 +349,6 @@ class NHLAdvancedStatsFetcher:
             # Goalie's team is the opposite of the shooting team
             is_shooter_home = _safe_int(shot.get("isHomeTeam", "0")) == 1
             goalie_is_home = not is_shooter_home
-            shooter_team = shot.get("team", "")
-
             if goalie_id not in goalies:
                 goalies[goalie_id] = GoalieAggregates(
                     player_id=str(goalie_id),

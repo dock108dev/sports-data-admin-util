@@ -14,23 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-
-
-def _safe_div(numerator: int | float, denominator: int | float) -> float | None:
-    """Safe division returning None when denominator is zero."""
-    if denominator == 0:
-        return None
-    return numerator / denominator
-
-
-def _safe_float(val) -> float | None:
-    """Safely convert a value to float, returning None on failure."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
+from ..utils.math import safe_float as _safe_float
 
 
 def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:

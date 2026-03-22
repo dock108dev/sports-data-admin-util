@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import distinct, exists, func, select, union
+from sqlalchemy import exists, func, select, union
 
 from ...config_sports import LEAGUE_CONFIG
 from ...db import AsyncSession, get_db
