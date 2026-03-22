@@ -39,6 +39,7 @@ try:
     )
     from app.db.mlb_advanced import MLBGameAdvancedStats, MLBPlayerFieldingStats, MLBPitcherGameStats, MLBPlayerAdvancedStats  # type: ignore
     from app.db.nba_advanced import NBAGameAdvancedStats, NBAPlayerAdvancedStats  # type: ignore
+    from app.db.nhl_advanced import NHLGameAdvancedStats, NHLGoalieAdvancedStats, NHLSkaterAdvancedStats  # type: ignore
     from app.db.odds import (  # type: ignore
         ClosingLine,
         FairbetGameOddsWork,
@@ -138,6 +139,10 @@ try:
         # NBA advanced stats
         NBAGameAdvancedStats=NBAGameAdvancedStats,
         NBAPlayerAdvancedStats=NBAPlayerAdvancedStats,
+        # NHL advanced stats
+        NHLGameAdvancedStats=NHLGameAdvancedStats,
+        NHLSkaterAdvancedStats=NHLSkaterAdvancedStats,
+        NHLGoalieAdvancedStats=NHLGoalieAdvancedStats,
     )
 except ImportError as exc:
     raise RuntimeError(

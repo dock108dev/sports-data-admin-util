@@ -20,6 +20,11 @@ from ...db.nba_advanced import (
     NBAGameAdvancedStats,
     NBAPlayerAdvancedStats,
 )
+from ...db.nhl_advanced import (
+    NHLGameAdvancedStats,
+    NHLGoalieAdvancedStats,
+    NHLSkaterAdvancedStats,
+)
 from ...db.social import TeamSocialPost
 from ...db.sports import (
     SportsGame,
@@ -162,6 +167,15 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             ),
             selectinload(SportsGame.nba_player_advanced_stats).selectinload(
                 NBAPlayerAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_advanced_stats).selectinload(
+                NHLGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_skater_advanced_stats).selectinload(
+                NHLSkaterAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_goalie_advanced_stats).selectinload(
+                NHLGoalieAdvancedStats.team
             ),
         )
         .where(SportsGame.id == game_id)
@@ -552,6 +566,83 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             for stat in game.nba_player_advanced_stats
         ]
 
+    # NHL advanced stats (MoneyPuck-derived)
+    from .schemas.nhl_advanced import (
+        NHLAdvancedTeamStats as NHLAdvTeamSchema,
+        NHLGoalieAdvancedStats as NHLGoalieSchema,
+        NHLSkaterAdvancedStats as NHLSkaterSchema,
+    )
+
+    nhl_advanced_stats_list: list[NHLAdvTeamSchema] | None = None
+    is_nhl = league_code == "NHL"
+    if is_nhl and game.nhl_advanced_stats:
+        nhl_advanced_stats_list = [
+            NHLAdvTeamSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                is_home=stat.is_home,
+                xgoals_for=stat.xgoals_for,
+                xgoals_against=stat.xgoals_against,
+                xgoals_pct=stat.xgoals_pct,
+                corsi_for=stat.corsi_for,
+                corsi_against=stat.corsi_against,
+                corsi_pct=stat.corsi_pct,
+                fenwick_for=stat.fenwick_for,
+                fenwick_against=stat.fenwick_against,
+                fenwick_pct=stat.fenwick_pct,
+                shots_for=stat.shots_for,
+                shots_against=stat.shots_against,
+                shooting_pct=stat.shooting_pct,
+                save_pct=stat.save_pct,
+                pdo=stat.pdo,
+                high_danger_shots_for=stat.high_danger_shots_for,
+                high_danger_goals_for=stat.high_danger_goals_for,
+                high_danger_shots_against=stat.high_danger_shots_against,
+                high_danger_goals_against=stat.high_danger_goals_against,
+            )
+            for stat in game.nhl_advanced_stats
+        ]
+
+    nhl_skater_advanced_stats_list: list[NHLSkaterSchema] | None = None
+    if is_nhl and game.nhl_skater_advanced_stats:
+        nhl_skater_advanced_stats_list = [
+            NHLSkaterSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                player_name=stat.player_name,
+                is_home=stat.is_home,
+                xgoals_for=stat.xgoals_for,
+                xgoals_against=stat.xgoals_against,
+                on_ice_xgoals_pct=stat.on_ice_xgoals_pct,
+                shots=stat.shots,
+                goals=stat.goals,
+                shooting_pct=stat.shooting_pct,
+                goals_per_60=stat.goals_per_60,
+                assists_per_60=stat.assists_per_60,
+                points_per_60=stat.points_per_60,
+                shots_per_60=stat.shots_per_60,
+                game_score=stat.game_score,
+            )
+            for stat in game.nhl_skater_advanced_stats
+        ]
+
+    nhl_goalie_advanced_stats_list: list[NHLGoalieSchema] | None = None
+    if is_nhl and game.nhl_goalie_advanced_stats:
+        nhl_goalie_advanced_stats_list = [
+            NHLGoalieSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                player_name=stat.player_name,
+                is_home=stat.is_home,
+                xgoals_against=stat.xgoals_against,
+                goals_against=stat.goals_against,
+                goals_saved_above_expected=stat.goals_saved_above_expected,
+                save_pct=stat.save_pct,
+                high_danger_save_pct=stat.high_danger_save_pct,
+                medium_danger_save_pct=stat.medium_danger_save_pct,
+                low_danger_save_pct=stat.low_danger_save_pct,
+                shots_against=stat.shots_against,
+            )
+            for stat in game.nhl_goalie_advanced_stats
+        ]
+
     from ...services.play_tiers import enrich_play_entries
 
     if plays_entries and league_code:
@@ -574,6 +665,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         mlb_fielding_stats=mlb_fielding_stats_list,
         nba_advanced_stats=nba_advanced_stats_list,
         nba_player_advanced_stats=nba_player_advanced_stats_list,
+        nhl_advanced_stats=nhl_advanced_stats_list,
+        nhl_skater_advanced_stats=nhl_skater_advanced_stats_list,
+        nhl_goalie_advanced_stats=nhl_goalie_advanced_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,

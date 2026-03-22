@@ -31,6 +31,11 @@ from .nba_advanced import (
     NBAAdvancedPlayerStats,
     NBAAdvancedTeamStats,
 )
+from .nhl_advanced import (
+    NHLAdvancedTeamStats,
+    NHLGoalieAdvancedStats,
+    NHLSkaterAdvancedStats,
+)
 
 
 class GameSummary(BaseModel):
@@ -180,6 +185,16 @@ class GameDetailResponse(BaseModel):
     )
     nba_player_advanced_stats: list["NBAAdvancedPlayerStats"] | None = Field(
         None, alias="nbaPlayerAdvancedStats"
+    )
+    # NHL advanced stats (only populated for NHL games)
+    nhl_advanced_stats: list["NHLAdvancedTeamStats"] | None = Field(
+        None, alias="nhlAdvancedStats"
+    )
+    nhl_skater_advanced_stats: list["NHLSkaterAdvancedStats"] | None = Field(
+        None, alias="nhlSkaterAdvancedStats"
+    )
+    nhl_goalie_advanced_stats: list["NHLGoalieAdvancedStats"] | None = Field(
+        None, alias="nhlGoalieAdvancedStats"
     )
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")

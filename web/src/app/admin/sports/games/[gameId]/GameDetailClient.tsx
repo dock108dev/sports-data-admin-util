@@ -14,6 +14,7 @@ import { FlowSection } from "./FlowSection";
 import { OddsSection } from "./OddsSection";
 import { MLBAdvancedStatsSection } from "./MLBAdvancedStatsSection";
 import { NBAAdvancedStatsSection } from "./NBAAdvancedStatsSection";
+import { NHLAdvancedStatsSection } from "./NHLAdvancedStatsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
 import { PipelineRunsSection } from "./PipelineRunsSection";
@@ -235,6 +236,16 @@ export default function GameDetailClient() {
         <NBAAdvancedStatsSection
           teamStats={game.nbaAdvancedStats}
           playerStats={game.nbaPlayerAdvancedStats}
+        />
+      )}
+
+      {((game.nhlAdvancedStats && game.nhlAdvancedStats.length > 0) ||
+        (game.nhlSkaterAdvancedStats && game.nhlSkaterAdvancedStats.length > 0) ||
+        (game.nhlGoalieAdvancedStats && game.nhlGoalieAdvancedStats.length > 0)) && (
+        <NHLAdvancedStatsSection
+          teamStats={game.nhlAdvancedStats}
+          skaterStats={game.nhlSkaterAdvancedStats}
+          goalieStats={game.nhlGoalieAdvancedStats}
         />
       )}
 

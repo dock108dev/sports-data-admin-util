@@ -291,6 +291,60 @@ export type NBAAdvancedPlayerStats = {
   screenAssists: number | null;
 };
 
+export type NHLAdvancedTeamStats = {
+  team: string;
+  isHome: boolean;
+  xgoalsFor: number | null;
+  xgoalsAgainst: number | null;
+  xgoalsPct: number | null;
+  corsiFor: number | null;
+  corsiAgainst: number | null;
+  corsiPct: number | null;
+  fenwickFor: number | null;
+  fenwickAgainst: number | null;
+  fenwickPct: number | null;
+  shotsFor: number | null;
+  shotsAgainst: number | null;
+  shootingPct: number | null;
+  savePct: number | null;
+  pdo: number | null;
+  highDangerShotsFor: number | null;
+  highDangerGoalsFor: number | null;
+  highDangerShotsAgainst: number | null;
+  highDangerGoalsAgainst: number | null;
+};
+
+export type NHLSkaterAdvancedStats = {
+  team: string;
+  playerName: string;
+  isHome: boolean;
+  xgoalsFor: number | null;
+  xgoalsAgainst: number | null;
+  onIceXgoalsPct: number | null;
+  shots: number | null;
+  goals: number | null;
+  shootingPct: number | null;
+  goalsPer60: number | null;
+  assistsPer60: number | null;
+  pointsPer60: number | null;
+  shotsPer60: number | null;
+  gameScore: number | null;
+};
+
+export type NHLGoalieAdvancedStats = {
+  team: string;
+  playerName: string;
+  isHome: boolean;
+  xgoalsAgainst: number | null;
+  goalsAgainst: number | null;
+  goalsSavedAboveExpected: number | null;
+  savePct: number | null;
+  highDangerSavePct: number | null;
+  mediumDangerSavePct: number | null;
+  lowDangerSavePct: number | null;
+  shotsAgainst: number | null;
+};
+
 export type OddsEntry = {
   book: string;
   marketType: string;
@@ -384,6 +438,9 @@ export type AdminGameDetail = {
   mlbFieldingStats?: MLBFieldingStat[] | null;
   nbaAdvancedStats?: NBAAdvancedTeamStats[] | null;
   nbaPlayerAdvancedStats?: NBAAdvancedPlayerStats[] | null;
+  nhlAdvancedStats?: NHLAdvancedTeamStats[] | null;
+  nhlSkaterAdvancedStats?: NHLSkaterAdvancedStats[] | null;
+  nhlGoalieAdvancedStats?: NHLGoalieAdvancedStats[] | null;
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];

@@ -89,6 +89,15 @@ def _dispatch_final_actions(game_id: int, league_code: str = "") -> None:
         except Exception as exc:
             logger.warning("nba_advanced_stats_dispatch_error", game_id=game_id, error=str(exc))
 
+    if league_code == "NHL":
+        try:
+            from .nhl_advanced_stats_tasks import ingest_nhl_advanced_stats
+
+            ingest_nhl_advanced_stats.apply_async(args=[game_id], countdown=60)
+            logger.info("nhl_advanced_stats_dispatched", game_id=game_id)
+        except Exception as exc:
+            logger.warning("nhl_advanced_stats_dispatch_error", game_id=game_id, error=str(exc))
+
 
 @shared_task(name="update_game_states")
 def update_game_states_task() -> dict:
