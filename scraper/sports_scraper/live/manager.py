@@ -16,6 +16,8 @@ from ..persistence.plays import upsert_plays
 from .mlb import MLBLiveFeedClient
 from .mlb_constants import MLB_GAME_TYPE_MAP
 from .nba import NBALiveFeedClient
+from .nfl import NFLLiveFeedClient
+from .nfl_constants import NFL_SEASON_TYPE_MAP
 from .nhl import NHLLiveFeedClient
 
 
@@ -33,6 +35,7 @@ class LiveFeedManager:
         self._nba_client = NBALiveFeedClient()
         self._nhl_client = NHLLiveFeedClient()
         self._mlb_client = MLBLiveFeedClient()
+        self._nfl_client = NFLLiveFeedClient()
 
     def ingest_live_data(
         self,
@@ -54,6 +57,8 @@ class LiveFeedManager:
             summary = self._sync_nhl(session, config, updated_before)
         elif config.league_code == "MLB":
             summary = self._sync_mlb(session, config, updated_before)
+        elif config.league_code == "NFL":
+            summary = self._sync_nfl(session, config, updated_before)
         elif config.league_code == "NCAAB":
             logger.info("live_feed_skipped", league=config.league_code, reason="no_live_pbp_feed")
             summary = LiveFeedSummary(games_touched=0, pbp_games=0, pbp_events=0)
@@ -264,6 +269,78 @@ class LiveFeedManager:
                 live_game.game_pk,
                 self._mlb_client.fetch_play_by_play,
                 source="mlb_api",
+            )
+            if pbp_result > 0:
+                pbp_games += 1
+                pbp_events += pbp_result
+
+        return LiveFeedSummary(games_touched=games_touched, pbp_games=pbp_games, pbp_events=pbp_events)
+
+    def _sync_nfl(
+        self,
+        session: Session,
+        config: IngestionConfig,
+        updated_before: datetime | None,
+    ) -> LiveFeedSummary:
+        if not config.start_date or not config.end_date:
+            return LiveFeedSummary(games_touched=0, pbp_games=0, pbp_events=0)
+
+        games_touched = 0
+        pbp_games = 0
+        pbp_events = 0
+
+        for live_game in self._nfl_client.fetch_schedule(config.start_date, config.end_date):
+            # Skip preseason games by default
+            if live_game.season_type == "preseason":
+                continue
+
+            season_type = live_game.season_type or "regular"
+            game_id, created = upsert_game_stub(
+                session,
+                league_code="NFL",
+                game_date=live_game.game_date,
+                home_team=live_game.home_team,
+                away_team=live_game.away_team,
+                status=live_game.status,
+                home_score=live_game.home_score,
+                away_score=live_game.away_score,
+                external_ids={"espn_game_id": live_game.game_id},
+                season_type=season_type,
+            )
+            games_touched += 1
+            logger.info(
+                "live_game_resolution",
+                league=config.league_code,
+                game_id=game_id,
+                external_id=live_game.game_id,
+            )
+            logger.info(
+                "nfl_live_game_upserted",
+                game_id=game_id,
+                created=created,
+                status=live_game.status,
+            )
+
+            game = session.get(db_models.SportsGame, game_id)
+            if not game:
+                continue
+
+            if _should_skip_pbp(session, game_id, config.only_missing, updated_before):
+                logger.info(
+                    "pbp_game_skipped",
+                    league=config.league_code,
+                    game_id=game_id,
+                    external_id=live_game.game_id,
+                    reason="already_ingested",
+                )
+                continue
+
+            pbp_result = self._ingest_pbp_for_game(
+                session,
+                game,
+                live_game.game_id,
+                self._nfl_client.fetch_play_by_play,
+                source="espn_nfl_api",
             )
             if pbp_result > 0:
                 pbp_games += 1

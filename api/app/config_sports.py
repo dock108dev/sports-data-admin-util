@@ -107,6 +107,21 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         expected_regular_season_games=2430,  # 162 * 30 / 2
         expected_teams=30,
     ),
+    "NFL": LeagueConfig(
+        code="NFL",
+        display_name="NFL Football",
+        boxscores_enabled=True,
+        odds_enabled=True,
+        social_enabled=True,
+        pbp_enabled=True,
+        timeline_enabled=True,
+        scheduled_ingestion=True,
+        live_pbp_enabled=True,
+        live_boxscore_enabled=True,
+        estimated_game_duration_hours=3.5,
+        expected_regular_season_games=272,  # 17 * 32 / 2
+        expected_teams=32,
+    ),
 }
 
 # --- Static validation: live_odds_enabled must remain False for all leagues ---

@@ -1071,6 +1071,8 @@ class TestScrapeRunManagerPbp:
 class TestScrapeRunManagerSocial:
     """Tests for social scraping in run method."""
 
+    @patch("sports_scraper.services.run_manager.dispatch_social")
+    @patch("sports_scraper.services.run_manager._social_task_exists_for_league", return_value=False)
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -1081,9 +1083,9 @@ class TestScrapeRunManagerSocial:
     def test_social_skipped_for_unsupported_league(
         self, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session
+        mock_get_session, mock_social_exists, mock_dispatch_social,
     ):
-        """Social is skipped for unsupported leagues."""
+        """Social dispatch for NFL uses mock (no real DB needed)."""
         mock_scrapers.return_value = {}
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -1093,7 +1095,7 @@ class TestScrapeRunManagerSocial:
 
         manager = ScrapeRunManager()
         config = IngestionConfig(
-            league_code="NFL",  # Not supported for social
+            league_code="NFL",
             boxscores=False,
             odds=False,
             social=True,

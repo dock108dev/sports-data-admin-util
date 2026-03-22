@@ -59,6 +59,23 @@ LEAGUE_CONFIG: dict[str, dict[str, Any]] = {
         "period_noun": "half",
         "extra_period_label": "overtime",
     },
+    "NFL": {
+        **_NBA_DEFAULTS,
+        "regulation_periods": 4,
+        "momentum_swing": 14,
+        "deficit_overcome": 10,
+        "close_game_margin": 7,
+        "close_game_swing": 7,
+        "close_game_deficit": 3,
+        "late_game_period": 4,
+        "blowout_margin": 21,
+        "garbage_time_margin": 21,
+        "garbage_time_period": 3,
+        "scoring_run_min": 10,
+        "period_noun": "quarter",
+        "score_noun": "point",
+        "extra_period_label": "overtime",
+    },
 }
 
 

@@ -19,7 +19,7 @@ export interface TaskDef {
   params: TaskParam[];
 }
 
-export const LEAGUE_OPTIONS = ["NBA", "NHL", "NCAAB", "MLB"];
+export const LEAGUE_OPTIONS = ["NBA", "NHL", "NCAAB", "MLB", "NFL"];
 
 export const TASK_REGISTRY: TaskDef[] = [
   // Ingestion

@@ -12,13 +12,15 @@ from ..db import db_models
 from ..logging import logger
 from ..utils.datetime_utils import now_utc
 
-PBP_SUPPORTED_LEAGUES = {"NBA", "NHL", "NCAAB"}
+PBP_SUPPORTED_LEAGUES = {"NBA", "NHL", "NCAAB", "MLB", "NFL"}
 PBP_MIN_PLAY_COUNT = 1
 CONFLICT_OVERLAP_WINDOW_HOURS = 6
 EXTERNAL_ID_KEYS: dict[str, str] = {
     "NBA": "nba_game_id",
     "NHL": "nhl_game_pk",
     "NCAAB": "cbb_game_id",
+    "MLB": "mlb_game_pk",
+    "NFL": "espn_game_id",
 }
 
 

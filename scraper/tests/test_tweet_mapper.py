@@ -64,8 +64,12 @@ class TestGameDurationByLeague:
         game = _make_game(league_code="NCAAB")
         assert _game_duration_hours(game) == 2.5
 
-    def test_unknown_league_uses_default(self):
+    def test_nfl_duration(self):
         game = _make_game(league_code="NFL")
+        assert _game_duration_hours(game) == 3.5
+
+    def test_unknown_league_uses_default(self):
+        game = _make_game(league_code="WNBA")
         assert _game_duration_hours(game) == 3.0
 
     def test_no_league_uses_default(self):

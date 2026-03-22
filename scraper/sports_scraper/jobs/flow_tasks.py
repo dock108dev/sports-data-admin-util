@@ -237,6 +237,22 @@ def run_scheduled_mlb_flow_generation() -> dict:
 
 
 @shared_task(
+    name="run_scheduled_nfl_flow_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_nfl_flow_generation() -> dict:
+    """
+    Scheduled task to generate flows for NFL games in the last 72 hours.
+
+    Runs 30 minutes after MLB flow generation (6:30 AM EST = 11:30 UTC).
+    Only generates flows for games that don't already have them (force=False).
+    """
+    return _run_flow_generation("NFL")
+
+
+@shared_task(
     name="run_scheduled_flow_generation",
     autoretry_for=(Exception,),
     retry_backoff=True,

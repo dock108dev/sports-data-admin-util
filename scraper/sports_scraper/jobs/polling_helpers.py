@@ -43,6 +43,8 @@ def _poll_single_game_pbp(session, game) -> dict:
         result = _poll_nhl_game(session, game)
     elif league_code == "MLB":
         result = _poll_mlb_game(session, game)
+    elif league_code == "NFL":
+        result = _poll_nfl_game(session, game)
     elif league_code == "NCAAB":
         pass  # Handled by _poll_ncaab_games_batch
 
@@ -196,8 +198,59 @@ def _poll_mlb_game(session, game) -> dict:
     return result
 
 
+def _poll_nfl_game(session, game) -> dict:
+    """Poll a single NFL game via the ESPN API."""
+    from ..db import db_models
+    from ..live.nfl import NFLLiveFeedClient
+    from ..services.game_processors import (
+        check_game_status_nfl,
+        process_game_pbp_nfl,
+    )
+
+    espn_game_id = (game.external_ids or {}).get("espn_game_id")
+    if not espn_game_id:
+        logger.debug("poll_nfl_skip_no_game_id", game_id=game.id)
+        return {"api_calls": 0}
+
+    try:
+        int(espn_game_id)
+    except (ValueError, TypeError):
+        logger.warning("poll_nfl_invalid_game_id", game_id=game.id, espn_game_id=espn_game_id)
+        return {"api_calls": 0}
+
+    client = NFLLiveFeedClient()
+    result: dict = {"api_calls": 0}
+
+    # Fetch scoreboard for status check
+    try:
+        status_result = check_game_status_nfl(session, game, client=client)
+        result["api_calls"] += status_result.api_calls
+        if status_result.transition:
+            result["transition"] = status_result.transition
+    except Exception as exc:
+        if "429" in str(exc):
+            raise _RateLimitError() from exc
+        logger.warning("poll_nfl_schedule_error", game_id=game.id, error=str(exc))
+
+    # Fetch PBP if game is live or pregame
+    if game.status in (db_models.GameStatus.live.value, db_models.GameStatus.pregame.value):
+        try:
+            pbp_result = process_game_pbp_nfl(session, game, client=client)
+            result["api_calls"] += pbp_result.api_calls
+            if pbp_result.events_inserted:
+                result["pbp_events"] = pbp_result.events_inserted
+            if pbp_result.transition:
+                result["transition"] = pbp_result.transition
+        except Exception as exc:
+            if "429" in str(exc):
+                raise _RateLimitError() from exc
+            logger.warning("poll_nfl_pbp_error", game_id=game.id, error=str(exc))
+
+    return result
+
+
 # ---------------------------------------------------------------------------
-# Boxscore polling helpers (NBA / NHL / MLB)
+# Boxscore polling helpers (NBA / NHL / MLB / NFL)
 # ---------------------------------------------------------------------------
 
 
