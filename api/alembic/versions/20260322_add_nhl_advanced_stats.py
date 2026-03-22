@@ -1,7 +1,7 @@
 """Add NHL advanced stats tables (team, skater, goalie).
 
 Revision ID: nhl_adv_stats_001
-Revises: sim_obs_001
+Revises: nba_adv_stats_001
 Create Date: 2026-03-22
 """
 

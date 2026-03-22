@@ -1,7 +1,9 @@
 """Seed 32 NFL teams into sports_teams.
 
-Adds all 32 NFL franchises (league_id=2) with official colors,
-abbreviations, and short names matching the normalization dict.
+Adds all 32 NFL franchises with official colors, abbreviations, and
+short names matching the normalization dict. Uses a subquery to resolve
+league_id from sports_leagues.code so the migration is safe regardless
+of the actual ID assigned to the NFL league row.
 
 Revision ID: 20260321_nfl_teams
 Revises: sim_obs_001
@@ -16,6 +18,8 @@ revision = "20260321_nfl_teams"
 down_revision = "sim_obs_001"
 branch_labels = None
 depends_on = None
+
+LEAGUE_CODE = "NFL"
 
 # (name, short_name, abbreviation, color_light_hex, color_dark_hex)
 NFL_TEAMS = [
@@ -63,12 +67,16 @@ def upgrade() -> None:
             f"(id, league_id, external_ref, name, short_name, abbreviation, "
             f"location, external_codes, created_at, updated_at, x_handle, "
             f"color_light_hex, color_dark_hex) "
-            f"VALUES (nextval('sports_teams_id_seq'), 2, NULL, '{esc_name}', "
-            f"'{esc_short}', '{abbr}', NULL, '{{}}', now(), now(), NULL, "
-            f"'{color_light}', '{color_dark}') "
+            f"VALUES (nextval('sports_teams_id_seq'), "
+            f"(SELECT id FROM sports_leagues WHERE code = '{LEAGUE_CODE}'), "
+            f"NULL, '{esc_name}', '{esc_short}', '{abbr}', NULL, '{{}}', "
+            f"now(), now(), NULL, '{color_light}', '{color_dark}') "
             f"ON CONFLICT (league_id, name) DO NOTHING"
         )
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM sports_teams WHERE league_id = 2")
+    op.execute(
+        f"DELETE FROM sports_teams WHERE league_id = "
+        f"(SELECT id FROM sports_leagues WHERE code = '{LEAGUE_CODE}')"
+    )

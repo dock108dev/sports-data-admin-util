@@ -1,7 +1,7 @@
 """Add nba_game_advanced_stats and nba_player_advanced_stats tables.
 
 Revision ID: nba_adv_stats_001
-Revises: sim_obs_001
+Revises: 20260321_nfl_teams
 Create Date: 2026-03-22
 """
 

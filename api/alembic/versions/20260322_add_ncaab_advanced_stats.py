@@ -1,7 +1,7 @@
 """Add ncaab_game_advanced_stats and ncaab_player_advanced_stats tables.
 
 Revision ID: ncaab_adv_stats_001
-Revises: sim_obs_001
+Revises: nfl_adv_stats_001
 Create Date: 2026-03-22
 """
 

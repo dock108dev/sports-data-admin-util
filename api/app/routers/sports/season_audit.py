@@ -153,9 +153,13 @@ async def season_audit(
         await session.execute(select(func.count()).select_from(all_teams))
     ).scalar_one()
 
-    # Config baselines
+    # Config baselines — only compare against expected counts for regular season
     cfg = LEAGUE_CONFIG.get(league_upper)
-    expected_games = cfg.expected_regular_season_games if cfg else None
+    expected_games = (
+        cfg.expected_regular_season_games
+        if cfg and season_type == "regular"
+        else None
+    )
     expected_teams = cfg.expected_teams if cfg else None
 
     coverage_pct = _pct(total_games, expected_games) if expected_games else None

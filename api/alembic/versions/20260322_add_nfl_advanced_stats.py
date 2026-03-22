@@ -1,7 +1,7 @@
 """Add NFL advanced stats tables (team-level and player-level EPA/WPA/CPOE).
 
 Revision ID: nfl_adv_stats_001
-Revises: sim_obs_001
+Revises: nhl_adv_stats_001
 Create Date: 2026-03-22
 
 Two tables for nflverse-derived advanced stats:
