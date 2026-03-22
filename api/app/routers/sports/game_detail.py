@@ -16,6 +16,10 @@ from ...db.mlb_advanced import (
     MLBPlayerAdvancedStats,
     MLBPlayerFieldingStats,
 )
+from ...db.nba_advanced import (
+    NBAGameAdvancedStats,
+    NBAPlayerAdvancedStats,
+)
 from ...db.social import TeamSocialPost
 from ...db.sports import (
     SportsGame,
@@ -152,6 +156,12 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             ),
             selectinload(SportsGame.fielding_stats).selectinload(
                 MLBPlayerFieldingStats.team
+            ),
+            selectinload(SportsGame.nba_advanced_stats).selectinload(
+                NBAGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.nba_player_advanced_stats).selectinload(
+                NBAPlayerAdvancedStats.team
             ),
         )
         .where(SportsGame.id == game_id)
@@ -460,6 +470,88 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             for row in game.fielding_stats
         ]
 
+    # NBA advanced stats
+    from .schemas.nba_advanced import NBAAdvancedTeamStats as NBAAdvTeamSchema
+    from .schemas.nba_advanced import NBAAdvancedPlayerStats as NBAAdvPlayerSchema
+
+    nba_advanced_stats_list: list[NBAAdvTeamSchema] | None = None
+    is_nba = league_code == "NBA"
+    if is_nba and game.nba_advanced_stats:
+        nba_advanced_stats_list = [
+            NBAAdvTeamSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                is_home=stat.is_home,
+                off_rating=stat.off_rating,
+                def_rating=stat.def_rating,
+                net_rating=stat.net_rating,
+                pace=stat.pace,
+                pie=stat.pie,
+                efg_pct=stat.efg_pct,
+                ts_pct=stat.ts_pct,
+                fg_pct=stat.fg_pct,
+                fg3_pct=stat.fg3_pct,
+                ft_pct=stat.ft_pct,
+                orb_pct=stat.orb_pct,
+                drb_pct=stat.drb_pct,
+                reb_pct=stat.reb_pct,
+                ast_pct=stat.ast_pct,
+                ast_ratio=stat.ast_ratio,
+                ast_tov_ratio=stat.ast_tov_ratio,
+                tov_pct=stat.tov_pct,
+                ft_rate=stat.ft_rate,
+                contested_shots=stat.contested_shots,
+                deflections=stat.deflections,
+                charges_drawn=stat.charges_drawn,
+                loose_balls_recovered=stat.loose_balls_recovered,
+                paint_points=stat.paint_points,
+                fastbreak_points=stat.fastbreak_points,
+                second_chance_points=stat.second_chance_points,
+                points_off_turnovers=stat.points_off_turnovers,
+                bench_points=stat.bench_points,
+            )
+            for stat in game.nba_advanced_stats
+        ]
+
+    nba_player_advanced_stats_list: list[NBAAdvPlayerSchema] | None = None
+    if is_nba and game.nba_player_advanced_stats:
+        nba_player_advanced_stats_list = [
+            NBAAdvPlayerSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                player_name=stat.player_name,
+                is_home=stat.is_home,
+                minutes=stat.minutes,
+                off_rating=stat.off_rating,
+                def_rating=stat.def_rating,
+                net_rating=stat.net_rating,
+                usg_pct=stat.usg_pct,
+                pie=stat.pie,
+                ts_pct=stat.ts_pct,
+                efg_pct=stat.efg_pct,
+                contested_2pt_fga=stat.contested_2pt_fga,
+                contested_2pt_fgm=stat.contested_2pt_fgm,
+                uncontested_2pt_fga=stat.uncontested_2pt_fga,
+                uncontested_2pt_fgm=stat.uncontested_2pt_fgm,
+                contested_3pt_fga=stat.contested_3pt_fga,
+                contested_3pt_fgm=stat.contested_3pt_fgm,
+                uncontested_3pt_fga=stat.uncontested_3pt_fga,
+                uncontested_3pt_fgm=stat.uncontested_3pt_fgm,
+                pull_up_fga=stat.pull_up_fga,
+                pull_up_fgm=stat.pull_up_fgm,
+                catch_shoot_fga=stat.catch_shoot_fga,
+                catch_shoot_fgm=stat.catch_shoot_fgm,
+                speed=stat.speed,
+                distance=stat.distance,
+                touches=stat.touches,
+                time_of_possession=stat.time_of_possession,
+                contested_shots=stat.contested_shots,
+                deflections=stat.deflections,
+                charges_drawn=stat.charges_drawn,
+                loose_balls_recovered=stat.loose_balls_recovered,
+                screen_assists=stat.screen_assists,
+            )
+            for stat in game.nba_player_advanced_stats
+        ]
+
     from ...services.play_tiers import enrich_play_entries
 
     if plays_entries and league_code:
@@ -480,6 +572,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         mlb_advanced_player_stats=mlb_advanced_player_stats_list,
         mlb_pitcher_game_stats=mlb_pitcher_game_stats_list,
         mlb_fielding_stats=mlb_fielding_stats_list,
+        nba_advanced_stats=nba_advanced_stats_list,
+        nba_player_advanced_stats=nba_player_advanced_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,

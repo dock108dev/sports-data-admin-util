@@ -224,6 +224,73 @@ export type MLBAdvancedPlayerStats = {
   barrelCount: number;
 };
 
+export type NBAAdvancedTeamStats = {
+  team: string;
+  isHome: boolean;
+  offRating: number | null;
+  defRating: number | null;
+  netRating: number | null;
+  pace: number | null;
+  pie: number | null;
+  efgPct: number | null;
+  tsPct: number | null;
+  fgPct: number | null;
+  fg3Pct: number | null;
+  ftPct: number | null;
+  orbPct: number | null;
+  drbPct: number | null;
+  rebPct: number | null;
+  astPct: number | null;
+  astRatio: number | null;
+  astTovRatio: number | null;
+  tovPct: number | null;
+  ftRate: number | null;
+  contestedShots: number | null;
+  deflections: number | null;
+  chargesDrawn: number | null;
+  looseBallsRecovered: number | null;
+  paintPoints: number | null;
+  fastbreakPoints: number | null;
+  secondChancePoints: number | null;
+  pointsOffTurnovers: number | null;
+  benchPoints: number | null;
+};
+
+export type NBAAdvancedPlayerStats = {
+  team: string;
+  playerName: string;
+  isHome: boolean;
+  minutes: number | null;
+  offRating: number | null;
+  defRating: number | null;
+  netRating: number | null;
+  usgPct: number | null;
+  pie: number | null;
+  tsPct: number | null;
+  efgPct: number | null;
+  contested2ptFga: number | null;
+  contested2ptFgm: number | null;
+  uncontested2ptFga: number | null;
+  uncontested2ptFgm: number | null;
+  contested3ptFga: number | null;
+  contested3ptFgm: number | null;
+  uncontested3ptFga: number | null;
+  uncontested3ptFgm: number | null;
+  pullUpFga: number | null;
+  pullUpFgm: number | null;
+  catchShootFga: number | null;
+  catchShootFgm: number | null;
+  speed: number | null;
+  distance: number | null;
+  touches: number | null;
+  timeOfPossession: number | null;
+  contestedShots: number | null;
+  deflections: number | null;
+  chargesDrawn: number | null;
+  looseBallsRecovered: number | null;
+  screenAssists: number | null;
+};
+
 export type OddsEntry = {
   book: string;
   marketType: string;
@@ -315,6 +382,8 @@ export type AdminGameDetail = {
   mlbAdvancedPlayerStats?: MLBAdvancedPlayerStats[] | null;
   mlbPitcherGameStats?: MLBPitcherGameStat[] | null;
   mlbFieldingStats?: MLBFieldingStat[] | null;
+  nbaAdvancedStats?: NBAAdvancedTeamStats[] | null;
+  nbaPlayerAdvancedStats?: NBAAdvancedPlayerStats[] | null;
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];

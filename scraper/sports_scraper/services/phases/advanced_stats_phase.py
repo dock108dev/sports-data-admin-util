@@ -21,17 +21,18 @@ def ingest_advanced_stats(
     start_job_run,
     complete_job_run,
 ) -> None:
-    """Phase: MLB Statcast advanced stats ingestion."""
-    if config.league_code != "MLB":
+    """Phase: advanced stats ingestion (MLB Statcast, NBA stats.nba.com)."""
+    supported_leagues = {"MLB", "NBA"}
+    if config.league_code not in supported_leagues:
         logger.info(
-            "advanced_stats_skip_non_mlb",
+            "advanced_stats_skip_unsupported",
             run_id=run_id,
             league=config.league_code,
-            message="Advanced stats only available for MLB; skipping.",
+            message=f"Advanced stats not yet available for {config.league_code}; skipping.",
         )
         return
 
-    adv_run_id = start_job_run("advanced_stats", ["MLB"])
+    adv_run_id = start_job_run("advanced_stats", [config.league_code])
     logger.info(
         "advanced_stats_start",
         run_id=run_id,
@@ -41,7 +42,14 @@ def ingest_advanced_stats(
         only_missing=config.only_missing,
     )
     try:
-        from ..mlb_advanced_stats_ingestion import ingest_advanced_stats_for_game
+        if config.league_code == "MLB":
+            from ..mlb_advanced_stats_ingestion import ingest_advanced_stats_for_game
+        elif config.league_code == "NBA":
+            from ..nba_advanced_stats_ingestion import ingest_advanced_stats_for_game
+        else:
+            logger.warning("advanced_stats_no_ingestion_service", league=config.league_code)
+            complete_job_run(adv_run_id, "skipped")
+            return
 
         with get_session() as session:
             window_start = start_of_et_day_utc(start)
@@ -54,7 +62,7 @@ def ingest_advanced_stats(
                     db_models.SportsGame.league_id == db_models.SportsLeague.id,
                 )
                 .filter(
-                    db_models.SportsLeague.code == "MLB",
+                    db_models.SportsLeague.code == config.league_code,
                     db_models.SportsGame.status == db_models.GameStatus.final.value,
                     db_models.SportsGame.game_date >= window_start,
                     db_models.SportsGame.game_date <= window_end,

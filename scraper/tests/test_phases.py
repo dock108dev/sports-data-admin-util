@@ -35,12 +35,12 @@ class TestIngestAdvancedStats:
         cfg.only_missing = only_missing
         return cfg
 
-    def test_skips_non_mlb(self):
+    def test_skips_unsupported_league(self):
         summary = {"advanced_stats": 0}
         mock_start = MagicMock()
         mock_complete = MagicMock()
         ingest_advanced_stats(
-            1, self._make_config("NBA"), summary,
+            1, self._make_config("NCAAF"), summary,
             date(2025, 1, 1), date(2025, 1, 2), None,
             get_session=MagicMock(), start_job_run=mock_start, complete_job_run=mock_complete,
         )

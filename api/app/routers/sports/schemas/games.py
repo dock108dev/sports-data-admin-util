@@ -27,6 +27,10 @@ from .mlb_advanced import (
     MLBFieldingStatSchema,
     MLBPitcherGameStatSchema,
 )
+from .nba_advanced import (
+    NBAAdvancedPlayerStats,
+    NBAAdvancedTeamStats,
+)
 
 
 class GameSummary(BaseModel):
@@ -169,6 +173,13 @@ class GameDetailResponse(BaseModel):
     )
     mlb_fielding_stats: list[MLBFieldingStatSchema] | None = Field(
         None, alias="mlbFieldingStats"
+    )
+    # NBA advanced stats (only populated for NBA games)
+    nba_advanced_stats: list["NBAAdvancedTeamStats"] | None = Field(
+        None, alias="nbaAdvancedStats"
+    )
+    nba_player_advanced_stats: list["NBAAdvancedPlayerStats"] | None = Field(
+        None, alias="nbaPlayerAdvancedStats"
     )
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
