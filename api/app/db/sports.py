@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .flow import SportsGameTimelineArtifact
     from .mlb_advanced import MLBGameAdvancedStats, MLBPlayerFieldingStats, MLBPitcherGameStats, MLBPlayerAdvancedStats
     from .nba_advanced import NBAGameAdvancedStats, NBAPlayerAdvancedStats
+    from .ncaab_advanced import NCAABGameAdvancedStats, NCAABPlayerAdvancedStats
     from .nfl_advanced import NFLGameAdvancedStats, NFLPlayerAdvancedStats
     from .nhl_advanced import NHLGameAdvancedStats, NHLGoalieAdvancedStats, NHLSkaterAdvancedStats
     from .odds import SportsGameOdds
@@ -330,6 +331,16 @@ class SportsGame(Base):
     )
     nfl_player_advanced_stats: Mapped[list[NFLPlayerAdvancedStats]] = relationship(
         "NFLPlayerAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    ncaab_advanced_stats: Mapped[list[NCAABGameAdvancedStats]] = relationship(
+        "NCAABGameAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    ncaab_player_advanced_stats: Mapped[list[NCAABPlayerAdvancedStats]] = relationship(
+        "NCAABPlayerAdvancedStats",
         back_populates="game",
         cascade="all, delete-orphan",
     )

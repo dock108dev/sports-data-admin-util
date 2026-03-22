@@ -16,6 +16,7 @@ import { MLBAdvancedStatsSection } from "./MLBAdvancedStatsSection";
 import { NBAAdvancedStatsSection } from "./NBAAdvancedStatsSection";
 import { NHLAdvancedStatsSection } from "./NHLAdvancedStatsSection";
 import { NFLAdvancedStatsSection } from "./NFLAdvancedStatsSection";
+import { NCAABAdvancedStatsSection } from "./NCAABAdvancedStatsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
 import { PipelineRunsSection } from "./PipelineRunsSection";
@@ -255,6 +256,14 @@ export default function GameDetailClient() {
         <NFLAdvancedStatsSection
           teamStats={game.nflAdvancedStats}
           playerStats={game.nflPlayerAdvancedStats}
+        />
+      )}
+
+      {((game.ncaabAdvancedStats && game.ncaabAdvancedStats.length > 0) ||
+        (game.ncaabPlayerAdvancedStats && game.ncaabPlayerAdvancedStats.length > 0)) && (
+        <NCAABAdvancedStatsSection
+          teamStats={game.ncaabAdvancedStats}
+          playerStats={game.ncaabPlayerAdvancedStats}
         />
       )}
 

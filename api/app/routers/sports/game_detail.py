@@ -20,6 +20,10 @@ from ...db.nba_advanced import (
     NBAGameAdvancedStats,
     NBAPlayerAdvancedStats,
 )
+from ...db.ncaab_advanced import (
+    NCAABGameAdvancedStats,
+    NCAABPlayerAdvancedStats,
+)
 from ...db.nfl_advanced import (
     NFLGameAdvancedStats,
     NFLPlayerAdvancedStats,
@@ -186,6 +190,12 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             ),
             selectinload(SportsGame.nfl_player_advanced_stats).selectinload(
                 NFLPlayerAdvancedStats.team
+            ),
+            selectinload(SportsGame.ncaab_advanced_stats).selectinload(
+                NCAABGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.ncaab_player_advanced_stats).selectinload(
+                NCAABPlayerAdvancedStats.team
             ),
         )
         .where(SportsGame.id == game_id)
@@ -709,6 +719,63 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             for stat in game.nfl_player_advanced_stats
         ]
 
+    # NCAAB advanced stats (four factors from boxscore data)
+    from .schemas.ncaab_advanced import (
+        NCAABAdvancedTeamStats as NCAABAdvTeamSchema,
+        NCAABAdvancedPlayerStats as NCAABAdvPlayerSchema,
+    )
+
+    ncaab_advanced_stats_list: list[NCAABAdvTeamSchema] | None = None
+    is_ncaab = league_code == "NCAAB"
+    if is_ncaab and game.ncaab_advanced_stats:
+        ncaab_advanced_stats_list = [
+            NCAABAdvTeamSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                is_home=stat.is_home,
+                possessions=stat.possessions,
+                off_rating=stat.off_rating,
+                def_rating=stat.def_rating,
+                net_rating=stat.net_rating,
+                pace=stat.pace,
+                off_efg_pct=stat.off_efg_pct,
+                off_tov_pct=stat.off_tov_pct,
+                off_orb_pct=stat.off_orb_pct,
+                off_ft_rate=stat.off_ft_rate,
+                def_efg_pct=stat.def_efg_pct,
+                def_tov_pct=stat.def_tov_pct,
+                def_orb_pct=stat.def_orb_pct,
+                def_ft_rate=stat.def_ft_rate,
+                fg_pct=stat.fg_pct,
+                three_pt_pct=stat.three_pt_pct,
+                ft_pct=stat.ft_pct,
+                three_pt_rate=stat.three_pt_rate,
+            )
+            for stat in game.ncaab_advanced_stats
+        ]
+
+    ncaab_player_advanced_stats_list: list[NCAABAdvPlayerSchema] | None = None
+    if is_ncaab and game.ncaab_player_advanced_stats:
+        ncaab_player_advanced_stats_list = [
+            NCAABAdvPlayerSchema(
+                team=stat.team.name if stat.team else "Unknown",
+                player_name=stat.player_name,
+                is_home=stat.is_home,
+                minutes=stat.minutes,
+                off_rating=stat.off_rating,
+                usg_pct=stat.usg_pct,
+                ts_pct=stat.ts_pct,
+                efg_pct=stat.efg_pct,
+                game_score=stat.game_score,
+                points=stat.points,
+                rebounds=stat.rebounds,
+                assists=stat.assists,
+                steals=stat.steals,
+                blocks=stat.blocks,
+                turnovers=stat.turnovers,
+            )
+            for stat in game.ncaab_player_advanced_stats
+        ]
+
     from ...services.play_tiers import enrich_play_entries
 
     if plays_entries and league_code:
@@ -736,6 +803,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         nhl_goalie_advanced_stats=nhl_goalie_advanced_stats_list,
         nfl_advanced_stats=nfl_advanced_stats_list,
         nfl_player_advanced_stats=nfl_player_advanced_stats_list,
+        ncaab_advanced_stats=ncaab_advanced_stats_list,
+        ncaab_player_advanced_stats=ncaab_player_advanced_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,

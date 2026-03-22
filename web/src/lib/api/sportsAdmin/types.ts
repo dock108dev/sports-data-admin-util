@@ -384,6 +384,46 @@ export type NFLAdvancedPlayerStats = {
   plays: number | null;
 };
 
+export type NCAABAdvancedTeamStats = {
+  team: string;
+  isHome: boolean;
+  possessions: number | null;
+  offRating: number | null;
+  defRating: number | null;
+  netRating: number | null;
+  pace: number | null;
+  offEfgPct: number | null;
+  offTovPct: number | null;
+  offOrbPct: number | null;
+  offFtRate: number | null;
+  defEfgPct: number | null;
+  defTovPct: number | null;
+  defOrbPct: number | null;
+  defFtRate: number | null;
+  fgPct: number | null;
+  threePtPct: number | null;
+  ftPct: number | null;
+  threePtRate: number | null;
+};
+
+export type NCAABAdvancedPlayerStats = {
+  team: string;
+  playerName: string;
+  isHome: boolean;
+  minutes: number | null;
+  offRating: number | null;
+  usgPct: number | null;
+  tsPct: number | null;
+  efgPct: number | null;
+  gameScore: number | null;
+  points: number | null;
+  rebounds: number | null;
+  assists: number | null;
+  steals: number | null;
+  blocks: number | null;
+  turnovers: number | null;
+};
+
 export type OddsEntry = {
   book: string;
   marketType: string;
@@ -482,6 +522,8 @@ export type AdminGameDetail = {
   nhlGoalieAdvancedStats?: NHLGoalieAdvancedStats[] | null;
   nflAdvancedStats?: NFLAdvancedTeamStats[] | null;
   nflPlayerAdvancedStats?: NFLAdvancedPlayerStats[] | null;
+  ncaabAdvancedStats?: NCAABAdvancedTeamStats[] | null;
+  ncaabPlayerAdvancedStats?: NCAABAdvancedPlayerStats[] | null;
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];

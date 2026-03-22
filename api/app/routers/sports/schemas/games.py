@@ -31,6 +31,10 @@ from .nba_advanced import (
     NBAAdvancedPlayerStats,
     NBAAdvancedTeamStats,
 )
+from .ncaab_advanced import (
+    NCAABAdvancedPlayerStats,
+    NCAABAdvancedTeamStats,
+)
 from .nfl_advanced import (
     NFLAdvancedPlayerStats,
     NFLAdvancedTeamStats,
@@ -206,6 +210,13 @@ class GameDetailResponse(BaseModel):
     )
     nfl_player_advanced_stats: list["NFLAdvancedPlayerStats"] | None = Field(
         None, alias="nflPlayerAdvancedStats"
+    )
+    # NCAAB advanced stats (only populated for NCAAB games)
+    ncaab_advanced_stats: list["NCAABAdvancedTeamStats"] | None = Field(
+        None, alias="ncaabAdvancedStats"
+    )
+    ncaab_player_advanced_stats: list["NCAABAdvancedPlayerStats"] | None = Field(
+        None, alias="ncaabPlayerAdvancedStats"
     )
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
