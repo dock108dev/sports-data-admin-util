@@ -50,6 +50,53 @@ export async function createScrapeRun(
   });
 }
 
+// ── Bulk backfill ──
+
+export interface BulkBackfillParams {
+  leagues: string[];
+  startDate: string;
+  endDate: string;
+  boxscores?: boolean;
+  odds?: boolean;
+  pbp?: boolean;
+  social?: boolean;
+  advancedStats?: boolean;
+  onlyMissing?: boolean;
+}
+
+export interface BulkBackfillChunk {
+  league_code: string;
+  start_date: string;
+  end_date: string;
+  run_id?: number | null;
+  job_id?: string | null;
+  error?: string | null;
+}
+
+export interface BulkBackfillResponse {
+  total_chunks: number;
+  chunks_dispatched: number;
+  chunks: BulkBackfillChunk[];
+}
+
+export async function previewBulkBackfill(
+  params: BulkBackfillParams
+): Promise<{ total_chunks: number; chunks: BulkBackfillChunk[] }> {
+  return request("/api/admin/sports/scraper/runs/bulk-preview", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function createBulkBackfill(
+  params: BulkBackfillParams
+): Promise<BulkBackfillResponse> {
+  return request("/api/admin/sports/scraper/runs/bulk", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
 export interface BulkFlowParams {
   start_date: string;
   end_date: string;

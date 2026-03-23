@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import selectinload
 
 from ...celery_client import get_celery_app
+from ...config_sports import LEAGUE_CONFIG
 from ...db import AsyncSession, get_db
 from ...db.scraper import SportsJobRun, SportsScrapeRun
 from ...db.sports import SportsLeague
@@ -245,3 +247,229 @@ async def cancel_scrape_run(
     await session.commit()
     league_code = run.league.code if run.league else "UNKNOWN"
     return serialize_run(run, league_code)
+
+
+# ---------------------------------------------------------------------------
+# Bulk backfill — season-aware chunking
+# ---------------------------------------------------------------------------
+
+
+def _league_season_range(league_code: str, year: int) -> tuple[date, date] | None:
+    """Return (start, end) for a league's season in a given year.
+
+    For cross-year leagues (NBA, NHL, NFL, NCAAB), *year* is the season
+    start year — e.g. year=2024 → Oct 2024 – Apr 2025.
+
+    Returns None if the league has no season config.  Adds a 6-week
+    playoff buffer past the regular-season end date.
+    """
+    cfg = LEAGUE_CONFIG.get(league_code)
+    if not cfg or not cfg.season_start_month or not cfg.season_end_month:
+        return None
+
+    start = date(year, cfg.season_start_month, cfg.season_start_day or 1)
+    end_year = year + 1 if cfg.season_crosses_year else year
+    end = date(end_year, cfg.season_end_month, cfg.season_end_day or 28)
+
+    # Add 6-week playoff buffer
+    end += timedelta(weeks=6)
+
+    return start, end
+
+
+def _month_chunks(start: date, end: date) -> list[tuple[date, date]]:
+    """Split a date range into monthly chunks."""
+    chunks = []
+    cursor = start
+    while cursor < end:
+        # End of this month
+        if cursor.month == 12:
+            month_end = date(cursor.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            month_end = date(cursor.year, cursor.month + 1, 1) - timedelta(days=1)
+        chunk_end = min(month_end, end)
+        chunks.append((cursor, chunk_end))
+        cursor = chunk_end + timedelta(days=1)
+    return chunks
+
+
+def compute_backfill_chunks(
+    leagues: list[str],
+    start_date: date,
+    end_date: date,
+) -> list[dict]:
+    """Compute season-aware monthly chunks for a multi-year backfill.
+
+    For each league, only generates chunks that overlap the league's season
+    (with a playoff buffer).  Skips off-season months entirely.
+    """
+    chunks = []
+    today = date.today()
+
+    for league_code in leagues:
+        # Build list of season windows that overlap [start_date, end_date]
+        season_windows = []
+        for year in range(start_date.year - 1, end_date.year + 1):
+            window = _league_season_range(league_code, year)
+            if window:
+                s, e = window
+                # Clip to requested range and don't go past today
+                s = max(s, start_date)
+                e = min(e, end_date, today)
+                if s < e:
+                    season_windows.append((s, e))
+
+        if not season_windows:
+            # No season config — fall back to monthly chunks of the full range
+            capped_end = min(end_date, today)
+            if start_date < capped_end:
+                season_windows = [(start_date, capped_end)]
+
+        # Break each season window into monthly chunks
+        for window_start, window_end in season_windows:
+            for chunk_start, chunk_end in _month_chunks(window_start, window_end):
+                chunks.append({
+                    "league_code": league_code,
+                    "start_date": chunk_start.isoformat(),
+                    "end_date": chunk_end.isoformat(),
+                })
+
+    return chunks
+
+
+class BulkBackfillRequest(BaseModel):
+    leagues: list[str]
+    start_date: date = Field(..., alias="startDate")
+    end_date: date = Field(..., alias="endDate")
+    boxscores: bool = True
+    odds: bool = False
+    pbp: bool = False
+    social: bool = False
+    advanced_stats: bool = Field(False, alias="advancedStats")
+    only_missing: bool = Field(True, alias="onlyMissing")
+
+    model_config = {"populate_by_name": True}
+
+
+class BulkBackfillChunk(BaseModel):
+    league_code: str
+    start_date: str
+    end_date: str
+    run_id: int | None = None
+    job_id: str | None = None
+    error: str | None = None
+
+
+class BulkBackfillResponse(BaseModel):
+    total_chunks: int
+    chunks_dispatched: int
+    chunks: list[BulkBackfillChunk]
+
+
+@router.post("/scraper/runs/bulk-preview")
+async def preview_bulk_backfill(body: BulkBackfillRequest) -> dict:
+    """Preview the chunks that would be created without dispatching."""
+    chunks = compute_backfill_chunks(
+        body.leagues, body.start_date, body.end_date,
+    )
+    return {"total_chunks": len(chunks), "chunks": chunks}
+
+
+@router.post("/scraper/runs/bulk", response_model=BulkBackfillResponse)
+async def create_bulk_backfill(
+    body: BulkBackfillRequest,
+    session: AsyncSession = Depends(get_db),
+) -> BulkBackfillResponse:
+    """Create season-aware chunked backfill runs.
+
+    Splits a wide date range into monthly chunks per league, skipping
+    off-season months.  Each chunk is enqueued as a separate Celery task
+    so progress is visible per-chunk in the Runs Drawer.
+    """
+    raw_chunks = compute_backfill_chunks(
+        body.leagues, body.start_date, body.end_date,
+    )
+
+    celery_app = get_celery_app()
+    result_chunks: list[BulkBackfillChunk] = []
+    dispatched = 0
+
+    for chunk in raw_chunks:
+        lc = chunk["league_code"]
+        try:
+            league = await get_league(session, lc)
+        except HTTPException:
+            result_chunks.append(BulkBackfillChunk(
+                league_code=lc,
+                start_date=chunk["start_date"],
+                end_date=chunk["end_date"],
+                error=f"Unknown league: {lc}",
+            ))
+            continue
+
+        worker_payload = {
+            "league_code": lc,
+            "start_date": chunk["start_date"],
+            "end_date": chunk["end_date"],
+            "boxscores": body.boxscores,
+            "odds": body.odds,
+            "pbp": body.pbp,
+            "social": body.social,
+            "advanced_stats": body.advanced_stats,
+            "only_missing": body.only_missing,
+        }
+
+        run = SportsScrapeRun(
+            scraper_type="bulk_backfill",
+            league_id=league.id,
+            start_date=_coerce_date_to_datetime(date.fromisoformat(chunk["start_date"])),
+            end_date=_coerce_date_to_datetime(date.fromisoformat(chunk["end_date"])),
+            status="pending",
+            requested_by="admin-bulk-backfill",
+            config=worker_payload,
+        )
+        session.add(run)
+        await session.flush()
+
+        try:
+            async_result = celery_app.send_task(
+                "run_scrape_job",
+                args=[run.id, worker_payload],
+                queue="sports-scraper",
+                routing_key="sports-scraper",
+                headers={"manual_trigger": True},
+            )
+            run.job_id = async_result.id
+
+            job_run = SportsJobRun(
+                phase="data_backfill",
+                leagues=[lc],
+                status="queued",
+                started_at=now_utc(),
+                celery_task_id=async_result.id,
+            )
+            session.add(job_run)
+            dispatched += 1
+
+            result_chunks.append(BulkBackfillChunk(
+                league_code=lc,
+                start_date=chunk["start_date"],
+                end_date=chunk["end_date"],
+                run_id=run.id,
+                job_id=async_result.id,
+            ))
+        except Exception as exc:
+            run.status = "error"
+            run.error_details = str(exc)
+            result_chunks.append(BulkBackfillChunk(
+                league_code=lc,
+                start_date=chunk["start_date"],
+                end_date=chunk["end_date"],
+                error=str(exc),
+            ))
+
+    return BulkBackfillResponse(
+        total_chunks=len(raw_chunks),
+        chunks_dispatched=dispatched,
+        chunks=result_chunks,
+    )
