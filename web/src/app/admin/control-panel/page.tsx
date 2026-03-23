@@ -5,10 +5,13 @@ import styles from "./styles.module.css";
 import {
   triggerTask,
   createScrapeRun,
+  createBulkBackfill,
+  previewBulkBackfill,
   triggerBulkFlowGeneration,
   getHoldStatus,
   setHoldStatus,
 } from "@/lib/api/sportsAdmin/taskControl";
+import type { BulkBackfillChunk } from "@/lib/api/sportsAdmin/taskControl";
 import {
   type TaskDef,
   LEAGUE_OPTIONS,
@@ -188,9 +191,9 @@ function DataBackfillCard() {
   const [dataTypes, setDataTypes] = useState<Set<string>>(() => new Set());
   const [forceAll, setForceAll] = useState(false);
   const [dispatching, setDispatching] = useState(false);
-  const [results, setResults] = useState<
-    { league: string; jobId?: string; error?: string }[]
-  >([]);
+  const [preview, setPreview] = useState<{ total_chunks: number; chunks: BulkBackfillChunk[] } | null>(null);
+  const [result, setResult] = useState<{ dispatched: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const toggleLeague = (l: string) =>
     setLeagues((prev) => {
@@ -209,34 +212,53 @@ function DataBackfillCard() {
   const canRun =
     startDate && endDate && leagues.size > 0 && dataTypes.size > 0;
 
+  const buildParams = () => ({
+    leagues: Array.from(leagues),
+    startDate,
+    endDate,
+    boxscores: dataTypes.has("Boxscores"),
+    odds: dataTypes.has("Odds"),
+    pbp: dataTypes.has("PBP"),
+    social: dataTypes.has("Social"),
+    advancedStats: dataTypes.has("Advanced Stats"),
+    onlyMissing: !forceAll,
+  });
+
+  const handlePreview = async () => {
+    setError(null);
+    setResult(null);
+    try {
+      const p = await previewBulkBackfill(buildParams());
+      setPreview(p);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preview failed");
+    }
+  };
+
   const handleRun = async () => {
     setDispatching(true);
-    setResults([]);
-    const newResults: typeof results = [];
-
-    for (const league of Array.from(leagues)) {
-      try {
-        const res = await createScrapeRun({
-          leagueCode: league,
-          startDate,
-          endDate,
-          boxscores: dataTypes.has("Boxscores"),
-          odds: dataTypes.has("Odds"),
-          pbp: dataTypes.has("PBP"),
-          social: dataTypes.has("Social"),
-          advancedStats: dataTypes.has("Advanced Stats"),
-          onlyMissing: !forceAll,
-        });
-        newResults.push({ league, jobId: res.job_id ?? `run#${res.id}` });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed";
-        newResults.push({ league, error: msg });
-      }
+    setError(null);
+    setPreview(null);
+    setResult(null);
+    try {
+      const res = await createBulkBackfill(buildParams());
+      setResult({ dispatched: res.chunks_dispatched, total: res.total_chunks });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setDispatching(false);
     }
-
-    setResults(newResults);
-    setDispatching(false);
   };
+
+  // Summarize preview chunks by league
+  const previewSummary = preview
+    ? Object.entries(
+        preview.chunks.reduce<Record<string, number>>((acc, c) => {
+          acc[c.league_code] = (acc[c.league_code] || 0) + 1;
+          return acc;
+        }, {})
+      )
+    : null;
 
   return (
     <div className={styles.backfillCard}>
@@ -244,7 +266,7 @@ function DataBackfillCard() {
         <span className={styles.taskName}>Data Backfill</span>
       </div>
       <div className={styles.taskDescription}>
-        Create scrape runs for selected leagues and data types over a date range.
+        Season-aware backfill — automatically chunks by month, skips off-season.
       </div>
 
       <div className={styles.dateRow}>
@@ -254,7 +276,7 @@ function DataBackfillCard() {
             type="date"
             className={styles.paramInput}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); setPreview(null); }}
           />
         </div>
         <div className={styles.paramGroup}>
@@ -263,7 +285,7 @@ function DataBackfillCard() {
             type="date"
             className={styles.paramInput}
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => { setEndDate(e.target.value); setPreview(null); }}
           />
         </div>
       </div>
@@ -273,7 +295,7 @@ function DataBackfillCard() {
         <ChipToggle
           items={LEAGUE_OPTIONS}
           selected={leagues}
-          onToggle={toggleLeague}
+          onToggle={(l) => { toggleLeague(l); setPreview(null); }}
         />
       </div>
 
@@ -295,28 +317,45 @@ function DataBackfillCard() {
           />
           Force re-upsert all games (skip nothing)
         </label>
-        <button
-          className={styles.runButton}
-          disabled={!canRun || dispatching}
-          onClick={handleRun}
-        >
-          {dispatching ? "Dispatching..." : "Run Backfill"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            className={styles.runButton}
+            style={{ background: "#64748b" }}
+            disabled={!canRun}
+            onClick={handlePreview}
+          >
+            Preview
+          </button>
+          <button
+            className={styles.runButton}
+            disabled={!canRun || dispatching}
+            onClick={handleRun}
+          >
+            {dispatching ? "Dispatching..." : "Run Backfill"}
+          </button>
+        </div>
       </div>
 
-      {results.length > 0 && (
+      {preview && previewSummary && (
         <div className={styles.resultList}>
-          {results.map((r) => (
-            <span
-              key={r.league}
-              className={r.error ? styles.errorMsg : styles.dispatchedMsg}
-            >
-              {r.league}:{" "}
-              {r.error
-                ? r.error
-                : <>Dispatched <span className={styles.dispatchedTaskId}>{r.jobId}</span></>}
-            </span>
-          ))}
+          <span className={styles.dispatchedMsg}>
+            {preview.total_chunks} monthly chunks:{" "}
+            {previewSummary.map(([lc, n]) => `${lc} (${n})`).join(", ")}
+          </span>
+        </div>
+      )}
+
+      {result && (
+        <div className={styles.resultList}>
+          <span className={styles.dispatchedMsg}>
+            Dispatched {result.dispatched}/{result.total} chunks — check Runs Drawer for progress
+          </span>
+        </div>
+      )}
+
+      {error && (
+        <div className={styles.resultList}>
+          <span className={styles.errorMsg}>{error}</span>
         </div>
       )}
     </div>
