@@ -49,7 +49,7 @@ function TaskCard({ task }: { task: TaskDef }) {
       for (const p of task.params) {
         const val = paramValues[p.name]?.trim();
         if (val) {
-          args.push(p.type === "number" ? Number(val) : val);
+          args.push(p.type === "number" ? Number(val) : val);  // "text" and "select" pass as strings
         } else if (p.required) {
           return;
         } else {
@@ -111,7 +111,7 @@ function TaskCard({ task }: { task: TaskDef }) {
                 </select>
               ) : (
                 <input
-                  type="number"
+                  type={p.type === "text" ? "text" : "number"}
                   className={styles.paramInput}
                   placeholder={p.default !== undefined ? String(p.default) : ""}
                   value={paramValues[p.name] ?? ""}

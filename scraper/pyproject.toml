@@ -63,6 +63,8 @@ omit = [
   # NFL boxscore/PBP ingestion (requires ESPN API + DB)
   "**/services/nfl_boxscore_ingestion.py",
   "**/services/pbp_nfl.py",
+  # NBA historical ingestion (requires Basketball Reference + DB; tested via test_nba_historical_ingestion.py)
+  "**/services/nba_historical_ingestion.py",
 ]
 
 [tool.coverage.report]

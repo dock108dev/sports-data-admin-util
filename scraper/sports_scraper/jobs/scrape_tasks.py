@@ -397,3 +397,65 @@ def poll_game_calendars() -> dict:
 
     return {"total_created": total_created, "leagues": results}
 
+
+@shared_task(name="ingest_nba_historical")
+def ingest_nba_historical(start_date: str, end_date: str, boxscores: bool = True, pbp: bool = True) -> dict:
+    """Backfill historical NBA data from Basketball Reference.
+
+    Politely scrapes boxscores, player stats, and PBP for seasons
+    where the NBA CDN API is no longer available. Uses 5-9 second
+    delays between requests and caches HTML locally.
+
+    Args:
+        start_date: YYYY-MM-DD format
+        end_date: YYYY-MM-DD format
+        boxscores: Whether to backfill boxscores + player stats
+        pbp: Whether to backfill play-by-play
+    """
+    from datetime import date as date_type
+
+    from ..db import get_session
+    from ..services.job_runs import start_job_run, complete_job_run
+    from ..services.nba_historical_ingestion import (
+        ingest_nba_historical_boxscores,
+        ingest_nba_historical_pbp,
+    )
+    from ..utils.redis_lock import LOCK_TIMEOUT_1HOUR, acquire_redis_lock, release_redis_lock
+
+    start = date_type.fromisoformat(start_date)
+    end = date_type.fromisoformat(end_date)
+    lock_name = "lock:nba_historical"
+
+    lock_token = acquire_redis_lock(lock_name, timeout=LOCK_TIMEOUT_1HOUR * 24)
+    if not lock_token:
+        logger.warning("nba_historical_skipped_locked")
+        return {"status": "skipped", "reason": "already_running"}
+
+    job_run_id = start_job_run("nba_historical", ["NBA"])
+    results: dict = {}
+
+    try:
+        with get_session() as session:
+            if boxscores:
+                processed, enriched, with_stats = ingest_nba_historical_boxscores(
+                    session, start_date=start, end_date=end,
+                )
+                results["boxscores"] = {
+                    "processed": processed, "enriched": enriched, "with_stats": with_stats,
+                }
+
+            if pbp:
+                pbp_count = ingest_nba_historical_pbp(
+                    session, start_date=start, end_date=end,
+                )
+                results["pbp"] = {"processed": pbp_count}
+
+        complete_job_run(job_run_id, "success", summary_data=results)
+    except Exception as exc:
+        complete_job_run(job_run_id, "error", str(exc)[:500])
+        raise
+    finally:
+        release_redis_lock(lock_name, lock_token)
+
+    return results
+
