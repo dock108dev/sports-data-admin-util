@@ -74,6 +74,13 @@
   cursor: not-allowed;
 }
 
+/* ── League grid ── */
+.leagueGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: var(--space-card-inner);
+}
+
 /* ── Summary card ── */
 .summaryCard {
   background: #ffffff;
@@ -203,10 +210,19 @@
   font-size: var(--font-body-size);
 }
 
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
 @media (max-width: 767px) {
   .controls {
     flex-direction: column;
     align-items: stretch;
+  }
+  .leagueGrid {
+    grid-template-columns: 1fr;
   }
   .progressRow {
     grid-template-columns: 90px 1fr 50px 50px;

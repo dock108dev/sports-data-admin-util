@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import styles from "./page.module.css";
 import { getSeasonAudit, type SeasonAuditResponse } from "@/lib/api/sportsAdmin";
-import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
 
-const SEASON_TYPES = ["regular", "playoff", "preseason"] as const;
+/** Leagues with season audit support (have config + data pipelines). */
+const AUDIT_LEAGUES = ["NBA", "NHL", "MLB", "NFL", "NCAAB"] as const;
 
 function barColor(pct: number): string {
   if (pct >= 90) return styles.barGreen;
@@ -25,65 +25,139 @@ interface CoverageRow {
   pct: number;
 }
 
+function LeagueCard({ data }: { data: SeasonAuditResponse }) {
+  const coverageRows: CoverageRow[] = [
+    { label: "Boxscores", count: data.withBoxscore, pct: data.boxscorePct },
+    { label: "Player Stats", count: data.withPlayerStats, pct: data.playerStatsPct },
+    { label: "Odds", count: data.withOdds, pct: data.oddsPct },
+    { label: "Play-by-Play", count: data.withPbp, pct: data.pbpPct },
+    { label: "Social", count: data.withSocial, pct: data.socialPct },
+    { label: "Game Flow", count: data.withFlow, pct: data.flowPct },
+    { label: "Adv Stats", count: data.withAdvancedStats, pct: data.advancedStatsPct },
+  ];
+
+  return (
+    <div className={styles.summaryCard}>
+      <div className={styles.summaryHeader}>
+        <span className={styles.summaryTitle}>{data.leagueCode}</span>
+        <span className={styles.summaryMeta}>
+          {data.teamsWithGames} teams
+          {data.expectedTeams != null && ` / ${data.expectedTeams}`}
+        </span>
+      </div>
+
+      {/* Big numbers */}
+      <div className={styles.bigNumbers}>
+        <div className={styles.bigNumber}>
+          <div className={styles.bigNumberValue}>
+            {data.totalGames.toLocaleString()}
+          </div>
+          <div className={styles.bigNumberLabel}>Games</div>
+        </div>
+        {data.expectedGames != null && (
+          <div className={styles.bigNumber}>
+            <div className={styles.bigNumberValue}>
+              {data.expectedGames.toLocaleString()}
+            </div>
+            <div className={styles.bigNumberLabel}>Expected</div>
+          </div>
+        )}
+        {data.coveragePct != null && (
+          <div className={styles.bigNumber}>
+            <div className={`${styles.bigNumberValue} ${textColor(data.coveragePct)}`}>
+              {data.coveragePct}%
+            </div>
+            <div className={styles.bigNumberLabel}>Coverage</div>
+          </div>
+        )}
+      </div>
+
+      {/* Season coverage bar */}
+      {data.expectedGames != null && (
+        <div style={{ marginBottom: "1rem" }}>
+          <div className={styles.progressBarOuter}>
+            <div
+              className={`${styles.progressBarInner} ${barColor(data.coveragePct ?? 0)}`}
+              style={{ width: `${Math.min(data.coveragePct ?? 0, 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Data type rows */}
+      <div className={styles.progressRows}>
+        {coverageRows.map((row) => (
+          <div key={row.label} className={styles.progressRow}>
+            <span className={styles.progressLabel}>{row.label}</span>
+            <div className={styles.progressBarOuter}>
+              <div
+                className={`${styles.progressBarInner} ${barColor(row.pct)}`}
+                style={{ width: `${Math.min(row.pct, 100)}%` }}
+              />
+            </div>
+            <span className={`${styles.progressPct} ${textColor(row.pct)}`}>
+              {row.pct}%
+            </span>
+            <span className={styles.progressCount}>
+              {row.count.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SeasonAuditPage() {
-  const [league, setLeague] = useState<string>("NBA");
-  const [season, setSeason] = useState<number>(new Date().getFullYear());
-  const [seasonType, setSeasonType] = useState<string>("regular");
-  const [data, setData] = useState<SeasonAuditResponse | null>(null);
+  const [season, setSeason] = useState<number>(new Date().getFullYear() - 1);
+  const [results, setResults] = useState<Record<string, SeasonAuditResponse>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleAudit = async () => {
+  const handleAudit = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const result = await getSeasonAudit({ league, season, seasonType });
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setResults({});
+    setErrors({});
 
-  const coverageRows: CoverageRow[] = data
-    ? [
-        { label: "Boxscores", count: data.withBoxscore, pct: data.boxscorePct },
-        { label: "Player Stats", count: data.withPlayerStats, pct: data.playerStatsPct },
-        { label: "Odds", count: data.withOdds, pct: data.oddsPct },
-        { label: "Play-by-Play", count: data.withPbp, pct: data.pbpPct },
-        { label: "Social", count: data.withSocial, pct: data.socialPct },
-        { label: "Game Flow", count: data.withFlow, pct: data.flowPct },
-        { label: "Advanced Stats", count: data.withAdvancedStats, pct: data.advancedStatsPct },
-      ]
-    : [];
+    const settled = await Promise.allSettled(
+      AUDIT_LEAGUES.map((league) =>
+        getSeasonAudit({ league, season, seasonType: "regular" })
+      )
+    );
+
+    const newResults: Record<string, SeasonAuditResponse> = {};
+    const newErrors: Record<string, string> = {};
+
+    settled.forEach((result, i) => {
+      const league = AUDIT_LEAGUES[i];
+      if (result.status === "fulfilled") {
+        newResults[league] = result.value;
+      } else {
+        newErrors[league] = result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      }
+    });
+
+    setResults(newResults);
+    setErrors(newErrors);
+    setLoading(false);
+  }, [season]);
+
+  const hasResults = Object.keys(results).length > 0;
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>Season Audit</h1>
-        <p className={styles.subtitle}>Check data completeness for a league season</p>
+        <p className={styles.subtitle}>
+          Data completeness across all leagues for a season
+        </p>
       </header>
 
       <div className={styles.controls}>
         <div className={styles.field}>
-          <span className={styles.fieldLabel}>League</span>
-          <select
-            className={styles.select}
-            value={league}
-            onChange={(e) => setLeague(e.target.value)}
-          >
-            {SUPPORTED_LEAGUES.map((lg) => (
-              <option key={lg} value={lg}>
-                {lg}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Season</span>
+          <span className={styles.fieldLabel}>Season Start Year</span>
           <input
             className={styles.input}
             type="number"
@@ -94,103 +168,41 @@ export default function SeasonAuditPage() {
           />
         </div>
 
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Type</span>
-          <select
-            className={styles.select}
-            value={seasonType}
-            onChange={(e) => setSeasonType(e.target.value)}
-          >
-            {SEASON_TYPES.map((st) => (
-              <option key={st} value={st}>
-                {st}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <button className={styles.button} onClick={handleAudit} disabled={loading}>
-          {loading ? "Auditing..." : "Audit"}
+          {loading ? "Loading..." : "Audit All Leagues"}
         </button>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {loading && <div className={styles.loading}>Fetching data for all leagues...</div>}
 
-      {data && (
-        <div className={styles.summaryCard}>
-          <div className={styles.summaryHeader}>
-            <span className={styles.summaryTitle}>
-              {data.leagueCode} {data.season} ({data.seasonType})
-            </span>
-            <span className={styles.summaryMeta}>
-              {data.teamsWithGames} teams
-              {data.expectedTeams != null && ` / ${data.expectedTeams} expected`}
-            </span>
-          </div>
+      {hasResults && (
+        <div className={styles.leagueGrid}>
+          {AUDIT_LEAGUES.map((league) => {
+            const data = results[league];
+            const err = errors[league];
 
-          {/* Big numbers */}
-          <div className={styles.bigNumbers}>
-            <div className={styles.bigNumber}>
-              <div className={styles.bigNumberValue}>
-                {data.totalGames.toLocaleString()}
-              </div>
-              <div className={styles.bigNumberLabel}>Games Found</div>
-            </div>
-            {data.expectedGames != null && (
-              <div className={styles.bigNumber}>
-                <div className={styles.bigNumberValue}>
-                  {data.expectedGames.toLocaleString()}
+            if (err) {
+              return (
+                <div key={league} className={styles.summaryCard}>
+                  <div className={styles.summaryHeader}>
+                    <span className={styles.summaryTitle}>{league}</span>
+                  </div>
+                  <div className={styles.error}>{err}</div>
                 </div>
-                <div className={styles.bigNumberLabel}>Expected</div>
-              </div>
-            )}
-            {data.coveragePct != null && (
-              <div className={styles.bigNumber}>
-                <div className={`${styles.bigNumberValue} ${textColor(data.coveragePct)}`}>
-                  {data.coveragePct}%
-                </div>
-                <div className={styles.bigNumberLabel}>Season Coverage</div>
-              </div>
-            )}
-          </div>
+              );
+            }
 
-          {/* Coverage progress bar */}
-          {data.expectedGames != null && (
-            <div style={{ marginBottom: "1.5rem" }}>
-              <div className={styles.progressBarOuter}>
-                <div
-                  className={`${styles.progressBarInner} ${barColor(data.coveragePct ?? 0)}`}
-                  style={{ width: `${Math.min(data.coveragePct ?? 0, 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
+            if (!data) return null;
 
-          {/* Data type rows */}
-          <div className={styles.progressRows}>
-            {coverageRows.map((row) => (
-              <div key={row.label} className={styles.progressRow}>
-                <span className={styles.progressLabel}>{row.label}</span>
-                <div className={styles.progressBarOuter}>
-                  <div
-                    className={`${styles.progressBarInner} ${barColor(row.pct)}`}
-                    style={{ width: `${Math.min(row.pct, 100)}%` }}
-                  />
-                </div>
-                <span className={`${styles.progressPct} ${textColor(row.pct)}`}>
-                  {row.pct}%
-                </span>
-                <span className={styles.progressCount}>
-                  {row.count.toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
+            return <LeagueCard key={league} data={data} />;
+          })}
         </div>
       )}
 
-      {!data && !loading && !error && (
-        <div className={styles.empty}>Select a league and season, then click Audit.</div>
+      {!hasResults && !loading && (
+        <div className={styles.empty}>
+          Pick a season start year and click Audit All Leagues.
+        </div>
       )}
     </div>
   );
