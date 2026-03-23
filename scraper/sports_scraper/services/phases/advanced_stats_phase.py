@@ -55,7 +55,7 @@ def ingest_advanced_stats(
     start_job_run,
     complete_job_run,
 ) -> None:
-    """Phase: advanced stats ingestion (MLB Statcast, NBA stats.nba.com)."""
+    """Phase: advanced stats ingestion (all leagues)."""
     supported_leagues = {"MLB", "NBA", "NHL", "NFL", "NCAAB"}
     if config.league_code not in supported_leagues:
         logger.info(
@@ -108,7 +108,10 @@ def ingest_advanced_stats(
                 )
                 .filter(
                     db_models.SportsLeague.code == config.league_code,
-                    db_models.SportsGame.status == db_models.GameStatus.final.value,
+                    db_models.SportsGame.status.in_([
+                        db_models.GameStatus.final.value,
+                        db_models.GameStatus.archived.value,
+                    ]),
                     db_models.SportsGame.game_date >= window_start,
                     db_models.SportsGame.game_date <= window_end,
                 )

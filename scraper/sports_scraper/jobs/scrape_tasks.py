@@ -131,7 +131,7 @@ def run_scheduled_ingestion() -> dict:
         schedule_single_league_and_wait,
     )
 
-    leagues = ["NBA", "NHL", "NCAAB", "NFL"]
+    leagues = ["NBA", "NHL", "NCAAB", "MLB", "NFL"]
 
     with track_job_run("scheduled_ingestion", leagues) as tracker:
         results = {}
@@ -172,6 +172,18 @@ def run_scheduled_ingestion() -> dict:
         _append_pbp_to_run_summary(ncaab_result.get("run_id"), ncaab_pbp_result.get("pbp_games", 0))
         logger.info("scheduled_ingestion_ncaab_pbp_complete", **ncaab_pbp_result)
 
+        # === MLB ===
+        logger.info("scheduled_ingestion_mlb_start")
+        mlb_result = schedule_single_league_and_wait("MLB")
+        results["MLB"] = mlb_result
+        logger.info("scheduled_ingestion_mlb_complete", **mlb_result)
+
+        logger.info("scheduled_ingestion_mlb_pbp_start")
+        mlb_pbp_result = run_pbp_ingestion_for_league("MLB")
+        results["MLB_PBP"] = mlb_pbp_result
+        _append_pbp_to_run_summary(mlb_result.get("run_id"), mlb_pbp_result.get("pbp_games", 0))
+        logger.info("scheduled_ingestion_mlb_pbp_complete", **mlb_pbp_result)
+
         # === NFL ===
         logger.info("scheduled_ingestion_nfl_start")
         nfl_result = schedule_single_league_and_wait("NFL")
@@ -186,8 +198,8 @@ def run_scheduled_ingestion() -> dict:
 
         summary = {
             "leagues": results,
-            "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"] + ncaab_result["runs_created"] + nfl_result["runs_created"],
-            "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"] + ncaab_pbp_result["pbp_games"] + nfl_pbp_result["pbp_games"],
+            "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"] + ncaab_result["runs_created"] + mlb_result["runs_created"] + nfl_result["runs_created"],
+            "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"] + ncaab_pbp_result["pbp_games"] + mlb_pbp_result["pbp_games"] + nfl_pbp_result["pbp_games"],
         }
         tracker.summary_data = summary
 

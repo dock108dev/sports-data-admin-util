@@ -16,7 +16,7 @@ This document describes where data comes from and how it's ingested.
 | Odds (pre-game) | The Odds API | NBA, NHL, NCAAB, MLB, NFL | Every 60s (pre-game lines) |
 | Odds (live) | The Odds API | NBA, NHL, NCAAB, MLB, NFL | Every 15-45s during live games (via live orchestrator) |
 | Social | X/Twitter | NBA, NHL, NCAAB, MLB, NFL | 24-hour game window |
-| Advanced Stats | stats.nba.com | NBA | Post-game (60s after final) |
+| Advanced Stats | Computed from boxscores | NBA | Post-game (60s after final) |
 | Advanced Stats | MoneyPuck CSV | NHL | Post-game (60s after final) |
 | Advanced Stats | nflverse (nflreadpy) | NFL | Post-game (60s after final) |
 | Advanced Stats | Computed from boxscores | NCAAB | Post-game (60s after final) |
@@ -140,7 +140,7 @@ Each sport has dedicated tables. All share the pattern: team-level (2 rows per g
 | Sport | Tables | Source |
 |-------|--------|--------|
 | MLB | `mlb_game_advanced_stats`, `mlb_player_advanced_stats`, `mlb_pitcher_game_stats`, `mlb_player_fielding_stats` | MLB Stats API (pitch-level Statcast) |
-| NBA | `nba_game_advanced_stats`, `nba_player_advanced_stats` | stats.nba.com (boxscoreadvancedv3, hustlev2, trackingv3) |
+| NBA | `nba_game_advanced_stats`, `nba_player_advanced_stats` | Computed from boxscores (efficiency ratings, four factors, shooting metrics) |
 | NHL | `nhl_game_advanced_stats`, `nhl_skater_advanced_stats`, `nhl_goalie_advanced_stats` | MoneyPuck CSV (shot-level xGoals) |
 | NFL | `nfl_game_advanced_stats`, `nfl_player_advanced_stats` | nflverse/nflreadpy (pre-computed EPA/WPA/CPOE) |
 | NCAAB | `ncaab_game_advanced_stats`, `ncaab_player_advanced_stats` | Computed from existing boxscore data (four factors) |
@@ -175,14 +175,16 @@ Both team-level aggregates and per-batter breakdowns are computed and stored.
 - Ingestion service: `scraper/sports_scraper/services/mlb_advanced_stats_ingestion.py`
 - Celery task: `scraper/sports_scraper/jobs/mlb_advanced_stats_tasks.py`
 
-## NBA Advanced Stats (stats.nba.com)
+## NBA Advanced Stats (Boxscore-Derived)
 
 ### Source
-stats.nba.com — 3 endpoints per game: `boxscoreadvancedv3` (efficiency/shooting), `boxscorehustlev2` (hustle), `boxscoreplayertrackingv3` (tracking). Free, no key. Blocks some cloud IPs.
+Computed from existing `sports_team_boxscores` and `sports_player_boxscores` JSONB data already in the database. No external API calls — all metrics derived from the NBA CDN boxscore data. Uses 0.44 FTA coefficient and 48-minute games.
+
+> **Note:** stats.nba.com tracking/hustle data (speed, distance, touches, contested shots, deflections) cannot be derived from boxscores and requires NBA's optical tracking system. stats.nba.com blocks cloud/datacenter IPs, so these fields are not currently populated. See TODO in `nba_advanced.py`.
 
 ### Data Collected
-- **Team-level:** OFF/DEF/NET rating, pace, PIE, eFG%, TS%, ORB%/DRB%, AST%, TOV%, contested shots, deflections, paint/fastbreak/second-chance points
-- **Player-level:** All team metrics per player + usage rate, speed, distance, touches, time of possession, pull-up/catch-shoot splits, screen assists
+- **Team-level:** OFF/DEF/NET rating, pace, eFG%, TS%, four factors (eFG%, TOV%, ORB%, FT rate), shooting splits, rebounds, assists
+- **Player-level:** TS%, eFG%, usage rate, game score, offensive rating
 
 ### Implementation
 - Fetcher: `scraper/sports_scraper/live/nba_advanced.py`
@@ -192,7 +194,9 @@ stats.nba.com — 3 endpoints per game: `boxscoreadvancedv3` (efficiency/shootin
 ## NHL Advanced Stats (MoneyPuck)
 
 ### Source
-MoneyPuck CSV downloads (`peter-tanner.com/moneypuck/downloads/shots_{season}.csv`). Free, credit MoneyPuck. 124 features per shot including pre-computed xGoals probability.
+MoneyPuck ZIP downloads (`peter-tanner.com/moneypuck/downloads/shots_{season}.zip`). Downloaded as ZIP, CSV extracted from archive. Free, credit MoneyPuck. 124 features per shot including pre-computed xGoals probability.
+
+> **Note:** NHL API game IDs (e.g., `2025020105`) use a 10-digit format. MoneyPuck uses a short format (`20105` — strip 4-digit season prefix, then leading zeros). The fetcher handles this conversion automatically.
 
 ### Data Collected
 - **Team-level:** xGoals for/against/%, Corsi (CF/CA/CF%), Fenwick (FF/FA/FF%), shooting%, save%, PDO, high-danger shots/goals
