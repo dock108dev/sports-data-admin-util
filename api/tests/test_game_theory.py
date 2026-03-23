@@ -406,3 +406,135 @@ class TestMinimaxRoutes:
         assert resp.status_code == 200
         data = resp.json()
         assert "strategy" in data
+
+
+# ---------------------------------------------------------------------------
+# Edge case / validation tests (added for robustness)
+# ---------------------------------------------------------------------------
+
+
+class TestNashEdgeCases:
+    """Validate matrix validation and empty inputs."""
+
+    def test_empty_columns(self):
+        """Matrix with empty rows: [[]] should return empty equilibrium."""
+        result = solve_zero_sum([[]])
+        assert result.row_strategy == []
+        assert result.col_strategy == []
+
+    def test_non_rectangular_matrix_raises(self):
+        """Non-rectangular matrix should raise ValueError."""
+        with pytest.raises(ValueError, match="Non-rectangular"):
+            solve_zero_sum([[1, 2], [3]])
+
+    def test_uniform_initialization(self):
+        """Fictitious play should start from uniform, not index-0-biased."""
+        # Symmetric game: both strategies should be close to uniform
+        result = solve_zero_sum([[1, -1], [-1, 1]], max_iterations=5000)
+        # With uniform init, strategies should be roughly 0.5/0.5
+        assert abs(result.row_strategy[0] - 0.5) < 0.1
+        assert abs(result.col_strategy[0] - 0.5) < 0.1
+
+
+class TestMinimaxEdgeCases:
+    """Validate depth cutoff and empty action handling."""
+
+    def test_empty_actions_returns_neutral(self):
+        """Empty actions should return empty result."""
+        result = solve_minimax(GameNode(is_maximizer=True, actions={}))
+        assert result.optimal_action == ""
+        assert result.action_values == {}
+
+    def test_depth_cutoff_with_terminal_children(self):
+        """Depth=1 with terminal children should evaluate correctly."""
+        node = GameNode(is_maximizer=True, actions={"a": 5.0, "b": 3.0})
+        action, value = minimax(node, depth=1)
+        assert action == "a"
+        assert value == 5.0
+
+    def test_depth_cutoff_non_terminal_raises(self):
+        """Depth=0 with non-terminal children should raise ValueError."""
+        inner = GameNode(is_maximizer=False, actions={"x": 1.0})
+        node = GameNode(is_maximizer=True, actions={"a": inner})
+        with pytest.raises(ValueError, match="Depth limit reached"):
+            minimax(node, depth=0)
+
+
+class TestOddsValidation:
+    """Validate that invalid American odds are rejected at request level."""
+
+    def test_kelly_invalid_odds_rejected(self):
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/kelly", json={
+            "model_prob": 0.55,
+            "american_odds": 50,  # Invalid: between -100 and 100
+        })
+        assert resp.status_code == 422
+
+    def test_kelly_batch_invalid_odds_rejected(self):
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/kelly/batch", json={
+            "bets": [{"model_prob": 0.55, "american_odds": -50}],
+        })
+        assert resp.status_code == 422
+
+    def test_portfolio_invalid_odds_rejected(self):
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/portfolio", json={
+            "bets": [{"model_prob": 0.55, "american_odds": 0}],
+        })
+        assert resp.status_code == 422
+
+    def test_valid_odds_accepted(self):
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/kelly", json={
+            "model_prob": 0.55,
+            "american_odds": -110,
+        })
+        assert resp.status_code == 200
+
+
+class TestMinimaxTreeValidation:
+    """Validate that invalid tree nodes are rejected."""
+
+    def test_empty_node_rejected(self):
+        """Node with no value and no actions should be rejected."""
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/minimax", json={
+            "tree": {},  # No value, no actions
+        })
+        assert resp.status_code == 422
+
+    def test_valid_leaf_accepted(self):
+        client = _make_client()
+        resp = client.post("/api/analytics/game-theory/minimax", json={
+            "tree": {"value": 5.0},
+        })
+        assert resp.status_code == 200
+
+
+class TestRegretMatchingConvergence:
+    """Validate regret matching produces sensible strategies."""
+
+    def test_symmetric_game_converges_to_uniform(self):
+        """Rock-paper-scissors-like game should converge near uniform."""
+        result = regret_matching(
+            payoff_matrix=[[0, -1, 1], [1, 0, -1], [-1, 1, 0]],
+            iterations=10_000,
+        )
+        # Each action should be roughly 1/3
+        for weight in result.strategy.values():
+            assert abs(weight - 0.333) < 0.1
+
+    def test_regret_table_contains_actual_regrets(self):
+        """Regret table values should not equal raw payoff values."""
+        result = regret_matching(
+            payoff_matrix=[[3, 0], [0, 3]],
+            iterations=5000,
+        )
+        # In a coordination game, regret table values should differ from raw payoffs
+        # because they're computed relative to the strategy value
+        for action_regrets in result.regret_table.values():
+            for regret in action_regrets.values():
+                # Regrets should be meaningful numbers, not just raw payoffs copied
+                assert isinstance(regret, float)

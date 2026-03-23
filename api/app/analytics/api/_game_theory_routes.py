@@ -9,8 +9,8 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field, model_validator
 
 from app.analytics.game_theory.kelly import compute_kelly, compute_kelly_batch
 from app.analytics.game_theory.minimax import (
@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game-theory", tags=["game-theory"])
 
 
+def _validate_american_odds(odds: float) -> float:
+    """Validate American odds are outside the invalid (-100, 100) range."""
+    if -100 < odds < 100:
+        raise ValueError(
+            f"Invalid American odds: {odds}. Must be <= -100 or >= 100."
+        )
+    return odds
+
+
 # ---------------------------------------------------------------------------
 # Kelly Criterion
 # ---------------------------------------------------------------------------
@@ -37,15 +46,25 @@ router = APIRouter(prefix="/game-theory", tags=["game-theory"])
 
 class KellyRequest(BaseModel):
     model_prob: float = Field(..., gt=0, lt=1, description="Model probability of winning")
-    american_odds: float = Field(..., description="American odds from sportsbook")
+    american_odds: float = Field(..., description="American odds from sportsbook (must be <= -100 or >= 100)")
     bankroll: float = Field(1000.0, gt=0, description="Total bankroll")
     variant: str = Field("half", description="'full', 'half', or 'quarter'")
     max_fraction: float = Field(0.25, gt=0, le=1, description="Per-bet cap")
+
+    @model_validator(mode="after")
+    def check_odds(self) -> KellyRequest:
+        _validate_american_odds(self.american_odds)
+        return self
 
 
 class KellyBetInput(BaseModel):
     model_prob: float = Field(..., gt=0, lt=1)
     american_odds: float
+
+    @model_validator(mode="after")
+    def check_odds(self) -> KellyBetInput:
+        _validate_american_odds(self.american_odds)
+        return self
 
 
 class KellyBatchRequest(BaseModel):
@@ -150,6 +169,11 @@ class PortfolioBetInput(BaseModel):
     american_odds: float
     game_id: str | None = Field(None, description="Game ID for correlation grouping")
 
+    @model_validator(mode="after")
+    def check_odds(self) -> PortfolioBetInput:
+        _validate_american_odds(self.american_odds)
+        return self
+
 
 class PortfolioRequest(BaseModel):
     bets: list[PortfolioBetInput]
@@ -195,10 +219,26 @@ class RegretMatchingRequest(BaseModel):
 
 
 class MinimaxTreeAction(BaseModel):
-    """Recursive tree node for minimax."""
+    """Recursive tree node for minimax.
+
+    Must be either:
+    - A leaf node with ``value`` set, OR
+    - A subtree with ``is_maximizer`` set and non-empty ``actions``.
+    """
     value: float | None = Field(None, description="Terminal value (if leaf)")
     is_maximizer: bool | None = Field(None, description="Player type (if subtree)")
     actions: dict[str, MinimaxTreeAction] | None = Field(None, description="Child actions")
+
+    @model_validator(mode="after")
+    def check_node_type(self) -> MinimaxTreeAction:
+        is_leaf = self.value is not None
+        has_actions = self.actions is not None and len(self.actions) > 0
+        if not is_leaf and not has_actions:
+            raise ValueError(
+                "Node must be either a leaf (value set) or a subtree "
+                "(is_maximizer set with non-empty actions)."
+            )
+        return self
 
 
 class MinimaxRequest(BaseModel):
@@ -223,7 +263,10 @@ async def post_minimax(req: MinimaxRequest) -> dict[str, Any]:
     root = _build_game_node(req.tree)
     if isinstance(root, (int, float)):
         return {"optimal_action": "", "action_values": {}, "depth": 0}
-    result = solve_minimax(root, depth=req.depth)
+    try:
+        result = solve_minimax(root, depth=req.depth)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return asdict(result)
 
 

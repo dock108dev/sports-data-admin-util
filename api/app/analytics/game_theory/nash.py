@@ -1,7 +1,7 @@
 """Nash Equilibrium solver for two-player zero-sum games.
 
-Implements the Lemke-Howson style linear programming approach for small games
-and fictitious play for larger games.  Designed for lineup optimization and
+Uses a fictitious play algorithm to approximate minimax strategies for
+two-player zero-sum payoff matrices. Designed for lineup optimization and
 pitch-selection strategy where the payoff matrix is derived from the matchup
 engine's probability distributions.
 
@@ -34,6 +34,7 @@ def solve_zero_sum(
 
     Args:
         payoff_matrix: M×N matrix of payoffs for the row player.
+            Must be rectangular with M > 0 and N > 0.
         row_labels: Optional names for row actions.
         col_labels: Optional names for column actions.
         max_iterations: Convergence limit for fictitious play.
@@ -46,18 +47,27 @@ def solve_zero_sum(
         return NashEquilibrium(
             row_strategy=[], col_strategy=[], game_value=0.0,
         )
+
     n = len(payoff_matrix[0])
+    if n == 0:
+        return NashEquilibrium(
+            row_strategy=[], col_strategy=[], game_value=0.0,
+        )
+
+    # Validate rectangular matrix
+    for i, row in enumerate(payoff_matrix):
+        if len(row) != n:
+            raise ValueError(
+                f"Non-rectangular payoff matrix: row 0 has {n} columns but row {i} has {len(row)}"
+            )
 
     row_labels = row_labels or [f"row_{i}" for i in range(m)]
     col_labels = col_labels or [f"col_{j}" for j in range(n)]
 
     # Fictitious play: each player tracks cumulative opponent choices
-    row_counts = [0.0] * m
-    col_counts = [0.0] * n
-
-    # Start with uniform
-    row_counts[0] = 1.0
-    col_counts[0] = 1.0
+    # Start with uniform empirical counts for all actions
+    row_counts = [1.0] * m
+    col_counts = [1.0] * n
 
     for _t in range(1, max_iterations + 1):
         # Column player best-responds to row player's empirical strategy
@@ -107,14 +117,6 @@ def lineup_nash(
     The payoff matrix should contain expected outcome values (e.g., wOBA or
     run expectancy) for each batter-pitcher pairing.  The offensive manager
     (row player) maximizes; the pitching side (column player) minimizes.
-
-    Args:
-        matchup_matrix: Rows=batters, Cols=pitchers, values=expected outcome.
-        batter_names: Display names for batters.
-        pitcher_names: Display names for pitchers.
-
-    Returns:
-        NashEquilibrium with optimal mixed strategies.
     """
     return solve_zero_sum(
         payoff_matrix=matchup_matrix,

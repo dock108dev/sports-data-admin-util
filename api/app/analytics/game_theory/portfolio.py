@@ -71,8 +71,11 @@ def optimize_portfolio(
 
         # Expected return per dollar wagered: p * (dec - 1) - (1 - p)
         er = p * (dec - 1.0) - (1.0 - p)
-        # Variance of a single Bernoulli bet
-        var = p * (1.0 - p) * (dec ** 2)
+        # Variance of per-dollar profit: outcomes +(dec-1) on win, -1 on loss
+        win_ret = dec - 1.0
+        loss_ret = -1.0
+        ex2 = p * (win_ret ** 2) + (1.0 - p) * (loss_ret ** 2)
+        var = ex2 - er ** 2
 
         returns.append(er)
         variances.append(var)
