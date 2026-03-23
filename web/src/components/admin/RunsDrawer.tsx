@@ -6,32 +6,66 @@ import { cancelJobRun, listJobRuns, type JobRunResponse } from "@/lib/api/sports
 
 type DrawerSize = "collapsed" | "half" | "full";
 
+/** Maps every phase value written to the DB → human-readable label.
+ *  Used for both the filter dropdown and the table cells. */
+const PHASE_LABELS: Record<string, string> = {
+  // Polling / live
+  update_game_states: "Update Game States",
+  poll_live_pbp: "Poll Live PBP",
+  // Odds
+  odds: "Odds Sync",
+  sync_mainline_odds: "Mainline Odds",
+  sync_prop_odds: "Prop Odds",
+  // Ingestion
+  ingest: "Boxscore Ingest",
+  scheduled_ingestion: "Scheduled Ingestion",
+  data_backfill: "Data Backfill",
+  nba_historical: "NBA Historical",
+  pbp: "Play-by-Play",
+  // Advanced stats
+  advanced_stats: "Advanced Stats",
+  ingest_nba_advanced_stats: "NBA Advanced Stats",
+  ingest_nhl_advanced_stats: "NHL Advanced Stats",
+  ingest_mlb_advanced_stats: "MLB Advanced Stats",
+  ingest_nfl_advanced_stats: "NFL Advanced Stats",
+  ingest_ncaab_advanced_stats: "NCAAB Advanced Stats",
+  // Social
+  social: "Social",
+  collect_game_social: "Game Social",
+  collect_social_for_league: "League Social",
+  map_social_to_games: "Map Social",
+  // Flows & timelines
+  trigger_flow: "Trigger Flow",
+  flow_generation: "Flow Generation",
+  timeline_generation: "Timeline Generation",
+  // Sweep
+  daily_sweep: "Daily Sweep",
+  // Golf
+  golf_sync_schedule: "Golf: Schedule",
+  golf_sync_players: "Golf: Players",
+  golf_sync_field: "Golf: Field",
+  golf_sync_leaderboard: "Golf: Leaderboard",
+  golf_sync_odds: "Golf: Odds",
+  golf_sync_dfs: "Golf: DFS",
+  golf_sync_stats: "Golf: Stats",
+  golf_score_pools: "Golf: Score Pools",
+  // Analytics
+  analytics_train: "Analytics: Train",
+  analytics_experiment: "Analytics: Experiment",
+  analytics_replay: "Analytics: Replay",
+  analytics_backtest: "Analytics: Backtest",
+  analytics_batch_sim: "Analytics: Batch Sim",
+  analytics_record_outcomes: "Analytics: Record Outcomes",
+  analytics_degradation_check: "Analytics: Degradation Check",
+};
+
+function phaseLabel(phase: string): string {
+  return PHASE_LABELS[phase] ?? phase;
+}
+
 const PHASE_OPTIONS = [
   { value: "", label: "All phases" },
-  { value: "update_game_states", label: "Update Game States" },
-  { value: "poll_live_pbp", label: "Poll Live PBP" },
-  { value: "sync_mainline_odds", label: "Mainline Odds" },
-  { value: "sync_prop_odds", label: "Prop Odds" },
-  { value: "social", label: "Social" },
-  { value: "collect_game_social", label: "Game Social" },
-  { value: "map_social_to_games", label: "Map Social" },
-  { value: "trigger_flow", label: "Trigger Flow" },
-  { value: "daily_sweep", label: "Daily Sweep" },
-  { value: "golf_sync_schedule", label: "Golf: Schedule" },
-  { value: "golf_sync_players", label: "Golf: Players" },
-  { value: "golf_sync_field", label: "Golf: Field" },
-  { value: "golf_sync_leaderboard", label: "Golf: Leaderboard" },
-  { value: "golf_sync_odds", label: "Golf: Odds" },
-  { value: "golf_sync_dfs", label: "Golf: DFS" },
-  { value: "golf_sync_stats", label: "Golf: Stats" },
-  { value: "golf_score_pools", label: "Golf: Score Pools" },
-  { value: "analytics_train", label: "Analytics: Train" },
-  { value: "analytics_experiment", label: "Analytics: Experiment" },
-  { value: "analytics_replay", label: "Analytics: Replay" },
-  { value: "analytics_backtest", label: "Analytics: Backtest" },
-  { value: "analytics_batch_sim", label: "Analytics: Batch Sim" },
-  { value: "analytics_record_outcomes", label: "Analytics: Record Outcomes" },
-  { value: "analytics_degradation_check", label: "Analytics: Degradation Check" },
+  ...Object.entries(PHASE_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 const ALL_STATUSES = ["success", "running", "queued", "error", "skipped", "canceled", "interrupted"] as const;
@@ -340,7 +374,7 @@ export function RunsDrawer() {
                           >
                             <td>
                               <span className={styles.phaseBadge}>
-                                {item.phase}
+                                {phaseLabel(item.phase)}
                               </span>
                               <span className={styles.groupCount}>
                                 {"\u00D7"}{item.count}
@@ -379,7 +413,7 @@ export function RunsDrawer() {
                                 >
                                   <td>
                                     <span className={styles.phaseBadge}>
-                                      {run.phase}
+                                      {phaseLabel(run.phase)}
                                     </span>
                                   </td>
                                   <td>
@@ -447,7 +481,7 @@ export function RunsDrawer() {
                         >
                           <td>
                             <span className={styles.phaseBadge}>
-                              {run.phase}
+                              {phaseLabel(run.phase)}
                             </span>
                           </td>
                           <td>
