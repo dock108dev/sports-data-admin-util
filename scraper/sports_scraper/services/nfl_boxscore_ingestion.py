@@ -255,7 +255,7 @@ def ingest_boxscores_via_nfl_api(
     with_stats = 0
     errors = 0
 
-    for game_id, espn_game_id, game_date, game_status in games:
+    for game_id, espn_game_id, game_date, _game_status in games:
         try:
             boxscore = client.fetch_boxscore(espn_game_id)
             if not boxscore:

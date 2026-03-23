@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from ...db import db_models
 from ...logging import logger
-from ...utils.datetime_utils import start_of_et_day_utc, sports_today_et
+from ...utils.datetime_utils import sports_today_et, start_of_et_day_utc
 
 
 def ingest_boxscores(

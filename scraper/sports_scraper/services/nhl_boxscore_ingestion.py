@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
-
 from sqlalchemy import and_, exists, not_
 from sqlalchemy.orm import Session
 
@@ -26,7 +24,12 @@ from ..models import (
 )
 from ..persistence import persist_game_payload
 from ..utils.date_utils import season_ending_year
-from ..utils.datetime_utils import date_to_utc_datetime
+from ..utils.datetime_utils import (
+    date_to_utc_datetime,
+    end_of_et_day_utc,
+    start_of_et_day_utc,
+    to_et_date,
+)
 from .pbp_ingestion import populate_nhl_game_ids
 
 

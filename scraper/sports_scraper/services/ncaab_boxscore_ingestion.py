@@ -141,7 +141,7 @@ def ingest_boxscores_via_ncaab_api(
     games_with_stats = 0
     errors = 0
 
-    for game_id, cbb_game_id, game_date, home_team_name, away_team_name in games:
+    for game_id, cbb_game_id, game_date, _home_team_name, _away_team_name in games:
         boxscore = boxscores.get(cbb_game_id)
 
         if not boxscore:
