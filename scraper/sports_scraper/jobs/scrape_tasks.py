@@ -104,83 +104,94 @@ def run_bulk_backfill(chunks: list[dict], data_toggles: dict) -> dict:
     errors = 0
     skipped = 0
 
-    logger.info("bulk_backfill_start", total_chunks=total)
+    # Activate the parent SportsJobRun so it moves from "queued" to "running"
+    task_id = run_bulk_backfill.request.id
+    job_run_id = _activate_job_run_for_task(task_id)
 
-    for i, chunk in enumerate(chunks, 1):
-        lc = chunk["league_code"]
-        config_payload = {
-            **data_toggles,
-            "league_code": lc,
-            "start_date": chunk["start_date"],
-            "end_date": chunk["end_date"],
+    logger.info("bulk_backfill_start", total_chunks=total, job_run_id=job_run_id)
+
+    try:
+        for i, chunk in enumerate(chunks, 1):
+            lc = chunk["league_code"]
+            config_payload = {
+                **data_toggles,
+                "league_code": lc,
+                "start_date": chunk["start_date"],
+                "end_date": chunk["end_date"],
+            }
+
+            # Create a scrape run record for this chunk
+            try:
+                with get_session() as session:
+                    league = (
+                        session.query(db_models.SportsLeague)
+                        .filter(db_models.SportsLeague.code == lc)
+                        .first()
+                    )
+                    if not league:
+                        logger.warning("bulk_backfill_unknown_league", league=lc)
+                        skipped += 1
+                        continue
+
+                    run = db_models.SportsScrapeRun(
+                        scraper_type="bulk_backfill",
+                        league_id=league.id,
+                        start_date=now_utc(),
+                        end_date=now_utc(),
+                        status="running",
+                        started_at=now_utc(),
+                        requested_by="admin-bulk-backfill",
+                        config=config_payload,
+                    )
+                    session.add(run)
+                    session.flush()
+                    run_id = run.id
+
+                logger.info(
+                    "bulk_backfill_chunk_start",
+                    chunk=i,
+                    total=total,
+                    league=lc,
+                    start_date=chunk["start_date"],
+                    end_date=chunk["end_date"],
+                    run_id=run_id,
+                )
+
+                result = run_ingestion(run_id, config_payload)
+                completed += 1
+
+                logger.info(
+                    "bulk_backfill_chunk_done",
+                    chunk=i,
+                    total=total,
+                    league=lc,
+                    result=result,
+                )
+
+            except Exception as exc:
+                errors += 1
+                logger.warning(
+                    "bulk_backfill_chunk_failed",
+                    chunk=i,
+                    total=total,
+                    league=lc,
+                    error=str(exc),
+                )
+                continue
+    finally:
+        summary = {
+            "total_chunks": total,
+            "completed": completed,
+            "errors": errors,
+            "skipped": skipped,
         }
+        logger.info("bulk_backfill_complete", **summary)
 
-        # Create a scrape run record for this chunk
-        try:
-            with get_session() as session:
-                league = (
-                    session.query(db_models.SportsLeague)
-                    .filter(db_models.SportsLeague.code == lc)
-                    .first()
-                )
-                if not league:
-                    logger.warning("bulk_backfill_unknown_league", league=lc)
-                    skipped += 1
-                    continue
+        # Mark the parent SportsJobRun as done
+        if job_run_id:
+            final_status = "success" if errors == 0 else "error"
+            complete_job_run(job_run_id, final_status, summary_data=summary)
 
-                run = db_models.SportsScrapeRun(
-                    scraper_type="bulk_backfill",
-                    league_id=league.id,
-                    start_date=now_utc(),
-                    end_date=now_utc(),
-                    status="running",
-                    started_at=now_utc(),
-                    requested_by="admin-bulk-backfill",
-                    config=config_payload,
-                )
-                session.add(run)
-                session.flush()
-                run_id = run.id
-
-            logger.info(
-                "bulk_backfill_chunk_start",
-                chunk=i,
-                total=total,
-                league=lc,
-                start_date=chunk["start_date"],
-                end_date=chunk["end_date"],
-                run_id=run_id,
-            )
-
-            result = run_ingestion(run_id, config_payload)
-            completed += 1
-
-            logger.info(
-                "bulk_backfill_chunk_done",
-                chunk=i,
-                total=total,
-                league=lc,
-                result=result,
-            )
-
-        except Exception as exc:
-            errors += 1
-            logger.warning(
-                "bulk_backfill_chunk_failed",
-                chunk=i,
-                total=total,
-                league=lc,
-                error=str(exc),
-            )
-            continue
-
-    summary = {
-        "total_chunks": total,
-        "completed": completed,
-        "errors": errors,
-        "skipped": skipped,
-    }
-    logger.info("bulk_backfill_complete", **summary)
     return summary
 
 

@@ -44,6 +44,31 @@ celery_config = {
     },
 }
 
+def _mark_job_run_skipped(celery_task_id: str | None) -> None:
+    """Mark any SportsJobRun for this task as skipped so it doesn't stay queued."""
+    if not celery_task_id:
+        return
+    try:
+        from .db import db_models, get_session
+        from .utils.datetime_utils import now_utc
+
+        with get_session() as session:
+            run = (
+                session.query(db_models.SportsJobRun)
+                .filter(
+                    db_models.SportsJobRun.celery_task_id == celery_task_id,
+                    db_models.SportsJobRun.status == "queued",
+                )
+                .first()
+            )
+            if run:
+                run.status = "skipped"
+                run.finished_at = now_utc()
+                session.commit()
+    except Exception:
+        pass  # best-effort cleanup
+
+
 class _HoldAwareTask(_celery_mod.Task):
     """Task base class that skips execution when the admin hold is active.
 
@@ -56,6 +81,9 @@ class _HoldAwareTask(_celery_mod.Task):
             headers = getattr(self.request, "headers", None) or {}
             if headers.get("manual_trigger") not in (True, "True", "true", 1, "1"):
                 logger.info("task_held_skipping", task=self.name, task_id=self.request.id)
+                # Clean up any SportsJobRun that was created for this task
+                # so it doesn't sit in "queued" forever.
+                _mark_job_run_skipped(self.request.id)
                 return {"skipped": True, "reason": "held"}
         return super().__call__(*args, **kwargs)
 

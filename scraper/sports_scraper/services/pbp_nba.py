@@ -76,6 +76,98 @@ def select_games_for_pbp_nba_api(
     return results
 
 
+def _probe_historical_game_ids(
+    start_date: date,
+    end_date: date,
+    *,
+    run_id: int = 0,
+) -> dict[tuple[str, str, date], str]:
+    """Probe the NBA CDN boxscore endpoint to discover game IDs for a historical season.
+
+    NBA regular-season game IDs follow the pattern ``002YY0NNNN`` where
+    ``YY`` is the season start year and ``NNNN`` is sequential (0001-1312).
+    We probe each ID and build a lookup by (home_abbr, away_abbr, date).
+    Results are cached so repeated calls for the same season are instant.
+    """
+    import httpx
+
+    from ..utils.cache import APICache
+    from ..config import settings
+    from ..utils.date_utils import season_from_date
+
+    season = season_from_date(start_date, "NBA")
+    season_suffix = str(season)[-2:]  # e.g. 2024 -> "24"
+
+    cache = APICache(
+        cache_dir=settings.scraper_config.html_cache_dir,
+        api_name="nba_game_ids",
+    )
+    cache_key = f"nba_game_ids_{season}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        # Reconstruct tuple keys from cached list of dicts
+        return {
+            (e["home"], e["away"], date.fromisoformat(e["date"])): e["gid"]
+            for e in cached
+        }
+
+    logger.info(
+        "nba_historical_game_id_probe_start",
+        run_id=run_id,
+        season=season,
+    )
+
+    lookup: list[dict] = []
+    result: dict[tuple[str, str, date], str] = {}
+
+    client = httpx.Client(timeout=10.0)
+    max_game_num = 1312  # Max regular-season games per NBA season
+    consecutive_misses = 0
+
+    for num in range(1, max_game_num + 1):
+        game_id = f"002{season_suffix}0{num:04d}"
+        url = f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
+        try:
+            resp = client.get(url)
+            if resp.status_code != 200:
+                consecutive_misses += 1
+                if consecutive_misses > 50:
+                    break  # End of season's games
+                continue
+            consecutive_misses = 0
+
+            game = resp.json().get("game", {})
+            game_dt = game.get("gameTimeUTC", "")
+            if not game_dt:
+                continue
+            game_day = date.fromisoformat(game_dt[:10])
+            home = game.get("homeTeam", {}).get("teamTricode", "").upper()
+            away = game.get("awayTeam", {}).get("teamTricode", "").upper()
+            if home and away:
+                result[(home, away, game_day)] = game_id
+                lookup.append({"home": home, "away": away, "date": str(game_day), "gid": game_id})
+        except Exception:
+            consecutive_misses += 1
+            if consecutive_misses > 50:
+                break
+            continue
+
+    client.close()
+
+    logger.info(
+        "nba_historical_game_id_probe_complete",
+        run_id=run_id,
+        season=season,
+        games_found=len(result),
+    )
+
+    # Cache for future calls
+    if lookup:
+        cache.put(cache_key, lookup)
+
+    return result
+
+
 def _is_current_nba_season(start_date: date, end_date: date) -> bool:
     """Check if the date range overlaps the current NBA season.
 
@@ -114,15 +206,7 @@ def populate_nba_game_ids(
     """
     from ..live.nba import NBALiveFeedClient
 
-    if not _is_current_nba_season(start_date, end_date):
-        logger.info(
-            "nba_game_ids_skip_historical",
-            run_id=run_id,
-            start_date=str(start_date),
-            end_date=str(end_date),
-            reason="NBA CDN only serves current season; use ingest_nba_historical for past seasons",
-        )
-        return 0
+    is_historical = not _is_current_nba_season(start_date, end_date)
 
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == "NBA"
@@ -175,29 +259,37 @@ def populate_nba_game_ids(
     ).all()
     team_id_to_abbr = {t.id: t.abbreviation for t in teams}
 
-    # Fetch NBA scoreboard for each day in range
-    client = NBALiveFeedClient()
+    # Build lookup: (home_abbr, away_abbr, date) -> nba_game_id
     nba_lookup: dict[tuple[str, str, date], str] = {}
 
-    current_date = start_date
-    while current_date <= end_date:
-        try:
-            nba_games = client.fetch_scoreboard(current_date)
-            for ng in nba_games:
-                key = (
-                    ng.home_abbr.upper(),
-                    ng.away_abbr.upper(),
-                    current_date,
+    if is_historical:
+        # CDN schedule only has the current season. For historical seasons,
+        # probe the CDN boxscore endpoint for the range of sequential game IDs.
+        nba_lookup = _probe_historical_game_ids(
+            start_date, end_date, run_id=run_id,
+        )
+    else:
+        # Current season: use live scoreboard / schedule API
+        client = NBALiveFeedClient()
+        current_date = start_date
+        while current_date <= end_date:
+            try:
+                nba_games = client.fetch_scoreboard(current_date)
+                for ng in nba_games:
+                    key = (
+                        ng.home_abbr.upper(),
+                        ng.away_abbr.upper(),
+                        current_date,
+                    )
+                    nba_lookup[key] = ng.game_id
+            except Exception as exc:
+                logger.warning(
+                    "nba_scoreboard_fetch_failed",
+                    run_id=run_id,
+                    date=str(current_date),
+                    error=str(exc),
                 )
-                nba_lookup[key] = ng.game_id
-        except Exception as exc:
-            logger.warning(
-                "nba_scoreboard_fetch_failed",
-                run_id=run_id,
-                date=str(current_date),
-                error=str(exc),
-            )
-        current_date += timedelta(days=1)
+            current_date += timedelta(days=1)
 
     # Match and update
     updated = 0
