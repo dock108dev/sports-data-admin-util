@@ -342,31 +342,11 @@ def mark_stale_runs_interrupted():
         logger.exception("failed_to_mark_stale_runs", error=str(exc))
 
 
-@signals.task_prerun.connect
-def check_hold_before_run(sender=None, task_id=None, task=None, args=None, kwargs=None, **kw):
-    """Skip task execution when hold is active, unless manually triggered.
-
-    Manual triggers from the admin control panel include a
-    ``manual_trigger=True`` header. Beat-scheduled tasks do not, so they
-    are the only ones blocked by the hold.
-    """
-    from celery.exceptions import Ignore
-
-    if not _is_held():
-        return
-
-    # Check if this was a manual trigger (header set by the API via
-    # apply_async(headers={"manual_trigger": True})).  Custom headers
-    # are exposed on request.headers, not as top-level request attrs.
-    request = getattr(task, "request", None)
-    if request:
-        headers = getattr(request, "headers", None) or {}
-        if headers.get("manual_trigger") in (True, "True", "true", 1, "1"):
-            return
-
-    task_name = getattr(task, "name", None) or str(sender)
-    logger.info("task_held_skipping", task=task_name, task_id=task_id)
-    raise Ignore()
+# Hold enforcement is handled by _HoldAwareTask.__call__() (line 54).
+# A previous task_prerun signal handler also raised Ignore() as a backup,
+# but Celery logs signal-raised exceptions as ERROR level, creating noisy
+# "Signal handler raised: Ignore()" messages every few seconds when hold
+# is active.  The base class approach is sufficient and silent.
 
 
 @signals.worker_ready.connect
