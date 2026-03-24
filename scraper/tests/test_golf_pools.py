@@ -613,7 +613,7 @@ class TestSyncLeaderboard:
             win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
             make_cut_prob=0.95,
         )
-        mock_client.get_live_predictions.return_value = [player]
+        mock_client.get_live_predictions.return_value = ([player], {})
         mock_client.get_live_tournament_stats.return_value = [player]
 
         mock_session = MagicMock()
@@ -633,7 +633,7 @@ class TestSyncLeaderboard:
         from sports_scraper.golf.ingestion import sync_leaderboard
 
         mock_client = MockClient.return_value
-        mock_client.get_live_predictions.return_value = []
+        mock_client.get_live_predictions.return_value = ([], {})
         mock_client.get_live_tournament_stats.return_value = []
 
         result = sync_leaderboard()
@@ -655,7 +655,7 @@ class TestSyncLeaderboard:
             win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
             make_cut_prob=0.95,
         )
-        mock_client.get_live_predictions.return_value = [player]
+        mock_client.get_live_predictions.return_value = ([player], {})
         mock_client.get_live_tournament_stats.return_value = [player]
 
         mock_session = MagicMock()

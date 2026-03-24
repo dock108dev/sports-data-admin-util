@@ -290,17 +290,30 @@ class DataGolfClient:
                 _log().warning("datagolf_pred_parse_error", player=p, error=str(exc))
         return preds
 
-    def get_live_predictions(self) -> list[DGLeaderboardEntry]:
-        """Fetch live in-play predictions and leaderboard."""
+    def get_live_predictions(self) -> tuple[list[DGLeaderboardEntry], dict]:
+        """Fetch live in-play predictions and leaderboard.
+
+        Returns (entries, meta) where *meta* contains top-level response
+        fields like ``event_name`` and ``event_id`` (if present).
+        """
         data = self._get("/preds/in-play", {"odds_format": "percent"})
         if not data:
-            return []
+            return [], {}
 
-        players = data.get("data", data) if isinstance(data, dict) else data
+        meta: dict = {}
+        if isinstance(data, dict):
+            players = data.get("data", data)
+            # Capture any tournament metadata from the response envelope
+            for key in ("event_name", "event_id", "course_name", "tour"):
+                if key in data:
+                    meta[key] = data[key]
+        else:
+            players = data
+
         if not isinstance(players, list):
-            return []
+            return [], meta
 
-        return [self._parse_leaderboard_entry(p) for p in players if p]
+        return [self._parse_leaderboard_entry(p) for p in players if p], meta
 
     def get_live_tournament_stats(self) -> list[DGLeaderboardEntry]:
         """Fetch live tournament stats (SG + traditional stats per player)."""

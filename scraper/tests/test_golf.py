@@ -308,7 +308,7 @@ class TestDataGolfClientParsing:
             assert client.get_rankings() == []
             assert client.get_outrights() == []
             assert client.get_dfs_projections() == []
-            assert client.get_live_predictions() == []
+            assert client.get_live_predictions() == ([], {})
             assert client.get_live_tournament_stats() == []
 
     def test_get_pre_tournament_predictions(self):
@@ -333,7 +333,7 @@ class TestDataGolfClientParsing:
                 {"dg_id": 18417, "player_name": "Scottie Scheffler", "position": 1, "total": -12, "thru": 14},
             ]
         }):
-            entries = client.get_live_predictions()
+            entries, meta = client.get_live_predictions()
 
         assert len(entries) == 1
         assert entries[0].position == 1

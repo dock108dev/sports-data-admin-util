@@ -78,9 +78,17 @@ def sync_schedule(tour: str = "pga", season: int | None = None) -> dict:
     client = DataGolfClient()
     tournaments = client.get_schedule(tour=tour, season=season)
 
+    today = date.today()
     count = 0
     with get_session() as session:
         for t in tournaments:
+            # DataGolf doesn't return a status field; derive from dates.
+            status = t.status  # will be "scheduled" (the default) if missing
+            if status == "scheduled" and t.end_date and t.end_date < today:
+                status = "completed"
+            elif status == "scheduled" and t.start_date and t.start_date <= today and (t.end_date is None or t.end_date >= today):
+                status = "in_progress"
+
             upsert_tournament(session, {
                 "event_id": t.event_id,
                 "tour": t.tour,
@@ -95,7 +103,7 @@ def sync_schedule(tour: str = "pga", season: int | None = None) -> dict:
                 "country": t.country,
                 "latitude": t.latitude,
                 "longitude": t.longitude,
-                "status": t.status,
+                "status": status,
             })
             count += 1
         session.commit()
@@ -194,7 +202,7 @@ def sync_leaderboard() -> dict:
     client = DataGolfClient()
 
     # Fetch both endpoints
-    in_play = client.get_live_predictions()
+    in_play, in_play_meta = client.get_live_predictions()
     stats = client.get_live_tournament_stats()
 
     if not in_play and not stats:
@@ -215,6 +223,31 @@ def sync_leaderboard() -> dict:
         if not tournament_id:
             logger.warning("golf_sync_leaderboard_no_active_tournament")
             return {"leaderboard_entries_upserted": 0, "tournament_id": None}
+
+        # Guard: if DataGolf returns event metadata, verify it matches the
+        # tournament we're about to write to.  This prevents stale data from
+        # a just-completed tournament being written to the next upcoming one.
+        dg_event = in_play_meta.get("event_name")
+        if dg_event:
+            row = session.execute(
+                text("SELECT event_name FROM golf_tournaments WHERE id = :tid"),
+                {"tid": tournament_id},
+            ).fetchone()
+            db_event = row[0] if row else None
+            if db_event and dg_event.lower().strip() != db_event.lower().strip():
+                logger.warning(
+                    "golf_sync_leaderboard_event_mismatch",
+                    datagolf_event=dg_event,
+                    db_event=db_event,
+                    tournament_id=tournament_id,
+                )
+                return {
+                    "leaderboard_entries_upserted": 0,
+                    "tournament_id": tournament_id,
+                    "skipped": "event_mismatch",
+                    "datagolf_event": dg_event,
+                    "db_event": db_event,
+                }
 
         lb_dicts = []
         for e in primary:
