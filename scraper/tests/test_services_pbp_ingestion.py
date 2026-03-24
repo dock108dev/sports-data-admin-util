@@ -293,16 +293,18 @@ class TestIsCurrentNbaSeason:
         assert _is_current_nba_season(date(2024, 10, 1), date(2025, 12, 1)) is True
 
     @patch("sports_scraper.utils.datetime_utils.today_et", return_value=date(2026, 1, 15))
-    def test_historical_skips_populate(self, _mock_today):
-        """populate_nba_game_ids should return 0 for historical seasons."""
+    def test_historical_uses_probe_path(self, _mock_today):
+        """populate_nba_game_ids should use CDN probe for historical seasons."""
         mock_session = MagicMock()
+        # Mock: league found but no games missing nba_game_id
+        mock_session.query.return_value.filter.return_value.first.return_value = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
         result = populate_nba_game_ids(
             mock_session, run_id=1,
             start_date=date(2022, 10, 18), end_date=date(2023, 4, 9),
         )
         assert result == 0
-        # Should not have queried the DB at all
-        mock_session.query.assert_not_called()
 
 
 class TestPopulateNbaGameIds:
