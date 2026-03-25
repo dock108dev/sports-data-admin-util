@@ -32,6 +32,10 @@ async def _start_job_run(
     # so SQLAlchemy's mapper configuration can resolve them.
     import app.db.flow  # noqa: F401
     import app.db.mlb_advanced  # noqa: F401
+    import app.db.nba_advanced  # noqa: F401
+    import app.db.ncaab_advanced  # noqa: F401
+    import app.db.nfl_advanced  # noqa: F401
+    import app.db.nhl_advanced  # noqa: F401
     import app.db.odds  # noqa: F401
     import app.db.social  # noqa: F401
     from app.db.scraper import SportsJobRun

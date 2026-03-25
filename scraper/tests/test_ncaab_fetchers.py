@@ -478,7 +478,7 @@ class TestNCAABBoxscoreFetcherDateRange:
     """Tests for NCAABBoxscoreFetcher date range methods."""
 
     def test_fetch_game_teams_by_date_range_success(self):
-        """Test successful team stats fetch by date range (no caching)."""
+        """Test successful team stats fetch by date range with caching."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -489,6 +489,7 @@ class TestNCAABBoxscoreFetcherDateRange:
         mock_client.get.return_value = mock_response
 
         mock_cache = MagicMock()
+        mock_cache.get.return_value = None  # cache miss
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_teams_by_date_range(
@@ -496,10 +497,10 @@ class TestNCAABBoxscoreFetcherDateRange:
         )
 
         assert len(result) == 2
-        mock_cache.put.assert_not_called()
+        mock_cache.put.assert_called_once()  # caches past-date results
 
-    def test_fetch_game_teams_by_date_range_no_cache(self):
-        """Date-range methods no longer cache — always hit the API."""
+    def test_fetch_game_teams_by_date_range_uses_cache(self):
+        """Date-range methods cache past-date responses to save API quota."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -507,6 +508,7 @@ class TestNCAABBoxscoreFetcherDateRange:
         mock_client.get.return_value = mock_response
 
         mock_cache = MagicMock()
+        mock_cache.get.return_value = None  # cache miss
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_teams_by_date_range(
@@ -515,8 +517,8 @@ class TestNCAABBoxscoreFetcherDateRange:
 
         assert len(result) == 1
         mock_client.get.assert_called_once()
-        mock_cache.get.assert_not_called()
-        mock_cache.put.assert_not_called()
+        mock_cache.get.assert_called_once()
+        mock_cache.put.assert_called_once()
 
     def test_fetch_game_teams_by_date_range_failure(self):
         """Test team stats fetch handles failure."""
@@ -552,7 +554,7 @@ class TestNCAABBoxscoreFetcherDateRange:
         assert result == []
 
     def test_fetch_game_players_by_date_range_success(self):
-        """Test successful player stats fetch by date range (no caching)."""
+        """Test successful player stats fetch by date range with caching."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -562,6 +564,7 @@ class TestNCAABBoxscoreFetcherDateRange:
         mock_client.get.return_value = mock_response
 
         mock_cache = MagicMock()
+        mock_cache.get.return_value = None
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_players_by_date_range(
@@ -569,17 +572,13 @@ class TestNCAABBoxscoreFetcherDateRange:
         )
 
         assert len(result) == 1
-        mock_cache.put.assert_not_called()
+        mock_cache.put.assert_called_once()
 
-    def test_fetch_game_players_by_date_range_no_cache(self):
-        """Date-range methods no longer cache — always hit the API."""
+    def test_fetch_game_players_by_date_range_cache_hit(self):
+        """Cache hit returns data without API call."""
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = [{"gameId": 123, "teamId": 1}]
-        mock_client.get.return_value = mock_response
-
         mock_cache = MagicMock()
+        mock_cache.get.return_value = [{"gameId": 123, "teamId": 1}]
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_players_by_date_range(
@@ -587,9 +586,7 @@ class TestNCAABBoxscoreFetcherDateRange:
         )
 
         assert len(result) == 1
-        mock_client.get.assert_called_once()
-        mock_cache.get.assert_not_called()
-        mock_cache.put.assert_not_called()
+        mock_client.get.assert_not_called()  # no API call needed
 
     def test_fetch_game_players_by_date_range_failure(self):
         """Test player stats fetch handles failure."""

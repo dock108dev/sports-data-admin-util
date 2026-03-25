@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -362,7 +363,7 @@ class TestNCAABLiveFeedClient:
     @patch("sports_scraper.live.ncaab.settings")
     def test_fetch_games_success(self, mock_settings):
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -396,7 +397,7 @@ class TestNCAABLiveFeedClient:
     @patch("sports_scraper.live.ncaab.settings")
     def test_fetch_games_live_status(self, mock_settings):
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -427,7 +428,7 @@ class TestNCAABLiveFeedClient:
     def test_fetch_games_in_progress_underscore_status(self, mock_settings):
         """CBB API returns 'in_progress' (underscore) for live games."""
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -459,7 +460,7 @@ class TestNCAABLiveFeedClient:
     def test_fetch_games_postponed_status(self, mock_settings):
         """CBB API returns 'postponed' for postponed games."""
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -491,7 +492,7 @@ class TestNCAABLiveFeedClient:
     def test_fetch_games_cancelled_status(self, mock_settings):
         """CBB API returns 'cancelled' for cancelled games."""
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -522,7 +523,7 @@ class TestNCAABLiveFeedClient:
     @patch("sports_scraper.live.ncaab.settings")
     def test_fetch_games_failure(self, mock_settings):
         mock_settings.cbb_stats_api_key = "test-api-key"
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         mock_response = MagicMock()
         mock_response.status_code = 401
@@ -538,7 +539,7 @@ class TestNCAABLiveFeedClient:
     @patch("sports_scraper.live.ncaab.settings")
     def test_get_season_for_date_fall(self, mock_settings):
         mock_settings.cbb_stats_api_key = None
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         client = NCAABLiveFeedClient()
         # October-December: next year's season
@@ -548,7 +549,7 @@ class TestNCAABLiveFeedClient:
     @patch("sports_scraper.live.ncaab.settings")
     def test_get_season_for_date_spring(self, mock_settings):
         mock_settings.cbb_stats_api_key = None
-        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+        mock_settings.scraper_config.html_cache_dir = tempfile.mkdtemp()
 
         client = NCAABLiveFeedClient()
         # January-September: current year's season
@@ -597,8 +598,8 @@ class TestNCAABBoxscoreFetcher:
         assert len(result) == 2
         assert result[0]["teamStats"]["points"] == 75
 
-    def test_fetch_game_teams_no_cache(self):
-        """Date-range methods no longer cache — always hit the API."""
+    def test_fetch_game_teams_caches_past_dates(self):
+        """Date-range methods cache responses for past date ranges."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -606,6 +607,7 @@ class TestNCAABBoxscoreFetcher:
         mock_client.get.return_value = mock_response
 
         mock_cache = MagicMock()
+        mock_cache.get.return_value = None  # cache miss
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_teams_by_date_range(
@@ -614,8 +616,8 @@ class TestNCAABBoxscoreFetcher:
 
         assert len(result) == 1
         mock_client.get.assert_called_once()
-        mock_cache.get.assert_not_called()
-        mock_cache.put.assert_not_called()
+        mock_cache.get.assert_called_once()  # checked cache first
+        mock_cache.put.assert_called_once()  # cached the result
 
     def test_fetch_game_teams_failure(self):
         mock_client = MagicMock()

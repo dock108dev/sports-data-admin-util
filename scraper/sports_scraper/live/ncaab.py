@@ -27,7 +27,7 @@ from .ncaa_boxscore import NCAABoxscoreFetcher
 from .ncaa_pbp import NCAAPbpFetcher
 from .ncaa_scoreboard import NCAAScoreboardClient, NCAAScoreboardGame
 from .ncaab_boxscore import NCAABBoxscoreFetcher
-from .ncaab_constants import CBB_GAMES_URL
+from .ncaab_constants import CBB_API_BASE, CBB_GAMES_URL
 from .ncaab_models import NCAABBoxscore, NCAABLiveGame
 from .ncaab_pbp import NCAABPbpFetcher
 
@@ -84,31 +84,30 @@ class NCAABLiveFeedClient:
         return season_ending_year(game_date)
 
     def _ensure_team_names(self, season: int) -> None:
-        """Ensure team names are loaded for the given season."""
+        """Ensure team names are loaded for the given season.
+
+        Uses the lightweight /teams endpoint (1 API call) instead of
+        fetching the entire season's games (~5,400 rows, expensive).
+        """
         if self._team_names_loaded_for_season == season:
             return
 
         logger.info("ncaab_loading_team_names", season=season)
 
         try:
-            params = {"season": season}
-            response = self.client.get(CBB_GAMES_URL, params=params)
+            response = self.client.get(f"{CBB_API_BASE}/teams")
             if response.status_code == 200:
-                games = response.json()
-                for game in games[:500]:  # Limit to avoid memory issues
-                    # API returns team IDs and names at root level
-                    home_id = game.get("homeTeamId")
-                    away_id = game.get("awayTeamId")
-                    home_name = game.get("homeTeam")
-                    away_name = game.get("awayTeam")
-
-                    if home_id and home_name:
-                        self._team_names[home_id] = home_name
-                    if away_id and away_name:
-                        self._team_names[away_id] = away_name
+                teams = response.json()
+                for team in teams:
+                    team_id = team.get("id")
+                    team_name = team.get("school") or team.get("name")
+                    if team_id and team_name:
+                        self._team_names[team_id] = team_name
 
                 self._team_names_loaded_for_season = season
                 logger.info("ncaab_team_names_loaded", count=len(self._team_names))
+            else:
+                logger.warning("ncaab_team_names_fetch_failed", status=response.status_code)
         except Exception as exc:
             logger.warning("ncaab_team_names_load_failed", error=str(exc))
 
@@ -136,6 +135,20 @@ class NCAABLiveFeedClient:
             season = self._get_season_for_date(start_date)
 
         self._ensure_team_names(season)
+
+        # Cache completed date ranges — game data for past dates is immutable
+        from ..utils.datetime_utils import today_et
+        cache_key = f"games_{season}_{start_date}_{end_date}"
+        is_past = end_date < today_et()
+        if is_past:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                games: list[NCAABLiveGame] = []
+                for game in cached:
+                    parsed = self._parse_game(game, season)
+                    if parsed:
+                        games.append(parsed)
+                return games
 
         params: dict[str, Any] = {"season": season}
 
@@ -172,6 +185,10 @@ class NCAABLiveFeedClient:
             return []
 
         games_data = response.json()
+
+        # Cache if the date range is entirely in the past (games are final)
+        if is_past:
+            self._cache.put(cache_key, games_data)
         logger.info(
             "ncaab_games_response",
             count=len(games_data) if isinstance(games_data, list) else 1,

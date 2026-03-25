@@ -58,6 +58,15 @@ class NCAABBoxscoreFetcher:
         Returns:
             List of team stats dictionaries for all games in the date range
         """
+        # Cache completed date ranges — boxscores for past games don't change
+        from ..utils.datetime_utils import today_et
+
+        cache_key = f"game_teams_{season}_{start_date}_{end_date}"
+        if end_date < today_et():
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         logger.info(
             "ncaab_game_teams_fetch_by_date",
             start_date=str(start_date),
@@ -93,6 +102,10 @@ class NCAABBoxscoreFetcher:
                 row_count=len(data) if isinstance(data, list) else 1,
             )
 
+            # Cache if date range is in the past
+            if end_date < today_et():
+                self._cache.put(cache_key, data)
+
             return data
 
         except Exception as exc:
@@ -121,6 +134,14 @@ class NCAABBoxscoreFetcher:
         Returns:
             List of player stats dictionaries for all games in the date range
         """
+        from ..utils.datetime_utils import today_et
+
+        cache_key = f"game_players_{season}_{start_date}_{end_date}"
+        if end_date < today_et():
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         logger.info(
             "ncaab_game_players_fetch_by_date",
             start_date=str(start_date),
@@ -155,6 +176,9 @@ class NCAABBoxscoreFetcher:
                 end_date=str(end_date),
                 row_count=len(data) if isinstance(data, list) else 1,
             )
+
+            if end_date < today_et():
+                self._cache.put(cache_key, data)
 
             return data
 
