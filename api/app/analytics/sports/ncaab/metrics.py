@@ -18,6 +18,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.core.types import PlayerProfile, TeamProfile
+from app.analytics.sports._helpers import (
+    metric_float as _float,
+    metric_float_or as _float_or,
+    metric_round as _round,
+    strip_none as _strip_none,
+)
 from app.analytics.sports.ncaab.constants import (
     BASELINE_DEF_RATING as _BASELINE_DEF_RATING,
 )
@@ -205,35 +211,3 @@ class NCAABMetrics:
         }
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
-
-def _float(stats: dict[str, Any], key: str) -> float | None:
-    """Extract a float value from stats, returning None if absent."""
-    val = stats.get(key)
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _float_or(stats: dict[str, Any], key: str, default: float) -> float:
-    """Extract a float value from stats, returning *default* if absent."""
-    val = _float(stats, key)
-    return val if val is not None else default
-
-
-def _round(val: float | None, decimals: int = 4) -> float | None:
-    """Round a value, passing through None."""
-    if val is None:
-        return None
-    return round(val, decimals)
-
-
-def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
-    """Remove keys with None values from a dict."""
-    return {k: v for k, v in d.items() if v is not None}

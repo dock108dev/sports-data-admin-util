@@ -17,8 +17,11 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.core.types import PlayerProfile, TeamProfile
-from app.analytics.sports.nba.constants import (
-    BASELINE_AST_PCT as _BASELINE_AST_PCT,
+from app.analytics.sports._helpers import (
+    metric_float as _float,
+    metric_round as _round,
+    safe_mean as _safe_mean,
+    strip_none as _strip_none,
 )
 from app.analytics.sports.nba.constants import (
     BASELINE_DEF_RATING as _BASELINE_DEF_RATING,
@@ -31,9 +34,6 @@ from app.analytics.sports.nba.constants import (
 )
 from app.analytics.sports.nba.constants import (
     BASELINE_PACE as _BASELINE_PACE,
-)
-from app.analytics.sports.nba.constants import (
-    BASELINE_TS_PCT as _BASELINE_TS_PCT,
 )
 
 
@@ -252,36 +252,3 @@ class NBAMetrics:
         return team
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
-
-def _float(stats: dict[str, Any], key: str) -> float | None:
-    """Extract a float value from stats, returning None if absent."""
-    val = stats.get(key)
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_mean(a: float | None, b: float | None) -> float | None:
-    """Average two values, tolerating None on either side."""
-    if a is not None and b is not None:
-        return (a + b) / 2.0
-    return a if a is not None else b
-
-
-def _round(val: float | None, decimals: int = 4) -> float | None:
-    """Round a value, passing through None."""
-    if val is None:
-        return None
-    return round(val, decimals)
-
-
-def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
-    """Remove keys with None values from a dict."""
-    return {k: v for k, v in d.items() if v is not None}

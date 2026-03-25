@@ -24,10 +24,10 @@ Predictive modeling, simulation, and matchup analysis for sports data.
 | `probabilities/` | Provider abstraction — rule-based, ML, ensemble; ProbabilityResolver for routing |
 | `services/` | AnalyticsService (API adapter), ModelService (model management) |
 | `simulation/` | Pitch-level simulators (PitchSimulator, PitchLevelGameSimulator) |
-| `sports/mlb/` | MLB PA-level game simulator, transforms, metrics, matchup logic; `constants.py` is the SSOT for all MLB baselines |
-| `sports/nba/` | NBA possession-based game simulator, metrics, transforms; `constants.py` for NBA baselines |
-| `sports/nhl/` | NHL shot-based game simulator (with shootout), metrics, transforms; `constants.py` for NHL baselines |
-| `sports/ncaab/` | NCAAB four-factor possession simulator (with ORB mechanic), metrics, transforms; `constants.py` for NCAAB baselines |
+| `sports/mlb/` | MLB PA-level game simulator, metrics, matchup logic; `constants.py` is the SSOT for all MLB baselines and canonical team abbreviations |
+| `sports/nba/` | NBA possession-based game simulator, metrics; `constants.py` for NBA baselines |
+| `sports/nhl/` | NHL shot-based game simulator (with shootout), metrics; `constants.py` for NHL baselines |
+| `sports/ncaab/` | NCAAB four-factor possession simulator (with ORB mechanic), metrics; `constants.py` for NCAAB baselines |
 | `training/core/` | TrainingPipeline, DatasetBuilder, ModelEvaluator |
 | `training/sports/` | Sport-specific training (MLBTrainingPipeline — label extraction, record builders; stubs only for data loading) |
 

@@ -366,9 +366,9 @@ class TestMLBTeamsBackwardCompat:
 class TestMLBSimulateBackwardCompat:
     """POST /api/simulator/mlb — existing endpoint with lineup support."""
 
-    @patch("app.routers.simulator._predict_with_game_model", new_callable=AsyncMock)
-    @patch("app.routers.simulator.get_team_rolling_profile", new_callable=AsyncMock)
-    @patch("app.routers.simulator._service")
+    @patch("app.routers.simulator_mlb._predict_with_game_model", new_callable=AsyncMock)
+    @patch("app.routers.simulator_mlb.get_team_rolling_profile", new_callable=AsyncMock)
+    @patch("app.routers.simulator_mlb._service")
     def test_runs_simulation(
         self, mock_service, mock_profile, mock_model_predict,
     ) -> None:

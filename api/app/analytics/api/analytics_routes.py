@@ -37,13 +37,7 @@ from ._simulation_helpers import (  # noqa: F401
 )
 from ._simulation_helpers import _build_lineup_context, _predict_with_game_model
 
-# Canonical 30 MLB team abbreviations — excludes All-Star, minor league,
-# and spring training teams that may exist in the DB under the MLB league.
-_MLB_TEAM_ABBRS = frozenset({
-    "ARI", "ATL", "BAL", "BOS", "CHC", "CWS", "CIN", "CLE", "COL", "DET",
-    "HOU", "KC", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY", "OAK",
-    "PHI", "PIT", "SD", "SF", "SEA", "STL", "TB", "TEX", "TOR", "WSH",
-})
+from app.analytics.sports.mlb.constants import MLB_TEAM_ABBRS as _MLB_TEAM_ABBRS
 
 logger = logging.getLogger(__name__)
 

@@ -67,7 +67,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 - **Simulation:** Multi-sport Monte Carlo game simulation (MLB, NBA, NHL, NCAAB). Each sport has a dedicated simulator: MLB (plate-appearance level), NBA/NCAAB (possession-based), NHL (shot-based with shootout). Supports team-level and lineup-aware modes (MLB) with per-batter probability distributions.
 - **Models:** ML models per sport — MLB (plate appearance, pitch, batted ball, run expectancy), NBA/NCAAB (possession, game), NHL (shot, game). Rule-based defaults when no trained model is loaded.
-- **Features:** Feature extraction pipeline with DB-backed configurable loadouts
+- **Features:** Feature extraction pipeline with DB-backed configurable loadouts (MLB, NBA, NHL, NCAAB feature builders registered in `FeatureBuilder`)
 - **Inference:** Model registry, activation controls, inference caching, auto-reload on model changes
 - **Ensemble:** Weighted probability combination from multiple providers
 - **Training:** Async Celery-based training pipeline — dataset building, label extraction, model evaluation, joblib artifact generation
