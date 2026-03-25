@@ -2,7 +2,20 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-03-24] - Current
+## [2026-03-25] - Current
+
+### Multi-Sport Simulator & Analytics
+
+- **Multi-sport game simulators:** Extended the MLB play-level simulator to all supported sports. NBA and NCAAB use possession-based models (with four-factor mechanics and offensive rebounds for NCAAB). NHL uses a shot-based model with overtime and shootout simulation. All simulators implement the `GameSimulator` protocol and are registered in `SimulationEngine`.
+- **Multi-sport profile service:** `get_team_rolling_profile()` now builds rolling profiles from sport-specific advanced stats tables (NBAGameAdvancedStats, NHLGameAdvancedStats, NCAABGameAdvancedStats) instead of returning `None` for non-MLB sports. Added `profile_to_probabilities()` dispatcher for sport-generic probability conversion.
+- **Sport-specific feature builders:** NBA (20 possession features), NHL (14 shot-quality features), NCAAB (22 four-factor features) registered in `FeatureBuilder` registry.
+- **Sport-specific ML model stubs:** Possession/game models for NBA and NCAAB, shot/game models for NHL. Rule-based defaults until trained models are available. All registered in `ModelRegistry`.
+- **Generic teams API:** `GET /api/analytics/{sport}/teams` endpoint returns teams with advanced stats counts for any supported sport. Existing `/mlb-teams` preserved as alias.
+- **Sport-aware team profiles:** `GET /api/analytics/team-profile` now accepts `sport` query param and returns sport-specific baselines.
+- **Frontend sport selector:** All 5 analytics pages (Simulator, Models, Batch Sims, Experiments, Profiles) now have a sport selector pill bar. MLB-specific UI (lineup mode, pitcher selection, PA probabilities) conditionally shown. Team lists reload on sport change.
+- **Test coverage:** 170+ tests covering all new simulators, metrics, feature builders, model stubs, engine integration, profile service, and API routes.
+
+## [2026-03-24]
 
 ### Ingestion Pipeline Hardening
 

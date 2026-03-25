@@ -65,8 +65,8 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 ### 3. Analytics Engine (`api/app/analytics/`)
 **Purpose:** Predictive modeling, simulation, and matchup analysis
 
-- **Simulation:** Monte Carlo game simulation using pitch-level data and team profiles; supports both team-level and lineup-aware modes with per-batter probability distributions
-- **Models:** ML models trained on pitch-level data (plate appearance outcomes, pitch outcomes, batted ball outcomes, run expectancy)
+- **Simulation:** Multi-sport Monte Carlo game simulation (MLB, NBA, NHL, NCAAB). Each sport has a dedicated simulator: MLB (plate-appearance level), NBA/NCAAB (possession-based), NHL (shot-based with shootout). Supports team-level and lineup-aware modes (MLB) with per-batter probability distributions.
+- **Models:** ML models per sport — MLB (plate appearance, pitch, batted ball, run expectancy), NBA/NCAAB (possession, game), NHL (shot, game). Rule-based defaults when no trained model is loaded.
 - **Features:** Feature extraction pipeline with DB-backed configurable loadouts
 - **Inference:** Model registry, activation controls, inference caching, auto-reload on model changes
 - **Ensemble:** Weighted probability combination from multiple providers
@@ -86,7 +86,7 @@ See [Analytics](analytics.md) for details.
   - Control Panel for on-demand Celery task dispatch (ingestion, odds, social, flows, timelines, utility)
   - Job run monitoring via RunsDrawer (IDE-style bottom panel, available on all admin pages)
   - Cross-book odds comparison: pre-game (`/admin/fairbet/odds`) and dedicated live odds page (`/admin/fairbet/live`) with auto-refresh, multi-game view, and game scoreboard strips
-  - Analytics section (5 pages): Simulator (MLB Monte Carlo), Models (registry, loadouts, training, performance), Batch Sims, Experiments (parameter sweeps), Profiles (team scouting)
+  - Analytics section (5 pages): Simulator (multi-sport Monte Carlo with sport selector — MLB/NBA/NHL/NCAAB), Models (registry, loadouts, training, performance), Batch Sims (multi-sport), Experiments (parameter sweeps, multi-sport), Profiles (team scouting, multi-sport)
   - Container log viewer
   - Game detail with boxscores, player stats, odds, social, PBP, flow, and pipeline runs
 
