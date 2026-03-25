@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import { listTeams, type MLBTeam } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
+import { type AnalyticsSport } from "@/lib/constants/analytics";
 import { TeamProfileComparison } from "../simulator/TeamProfileComparison";
 import styles from "../analytics.module.css";
 
 export default function ProfilesPage() {
-  const [sport, setSport] = useState("MLB");
+  const [sport, setSport] = useState<AnalyticsSport>("MLB");
   const sportCode = sport.toLowerCase();
   const [teams, setTeams] = useState<MLBTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);

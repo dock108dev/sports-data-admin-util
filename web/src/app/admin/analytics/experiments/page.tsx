@@ -10,6 +10,7 @@ import {
   type FeatureLoadout,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
+import { type AnalyticsSport } from "@/lib/constants/analytics";
 import styles from "../analytics.module.css";
 import { ExperimentHistory } from "./ExperimentHistory";
 
@@ -25,7 +26,7 @@ const TEST_SPLITS = [0.1, 0.15, 0.2, 0.25, 0.3];
 export default function ExperimentsPage() {
   // Bump to trigger history refresh after a new experiment is submitted
   const [refreshKey, setRefreshKey] = useState(0);
-  const [sport, setSport] = useState("MLB");
+  const [sport, setSport] = useState<AnalyticsSport>("MLB");
   const sportCode = sport.toLowerCase();
 
   return (

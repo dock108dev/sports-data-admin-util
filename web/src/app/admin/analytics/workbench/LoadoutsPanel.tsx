@@ -46,7 +46,7 @@ export function LoadoutsPanel({ sportCode = "mlb" }: { sportCode?: string }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sportCode]);
 
   useEffect(() => {
     refresh();

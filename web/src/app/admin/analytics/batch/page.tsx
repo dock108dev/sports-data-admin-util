@@ -14,12 +14,12 @@ import {
   type PredictionOutcome,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
-import { SPORT_CONFIGS } from "@/lib/constants/analytics";
+import { SPORT_CONFIGS, type AnalyticsSport } from "@/lib/constants/analytics";
 import { ROUTES } from "@/lib/constants/routes";
 import styles from "../analytics.module.css";
 
 export default function BatchSimsPage() {
-  const [sport, setSport] = useState("MLB");
+  const [sport, setSport] = useState<AnalyticsSport>("MLB");
   const sportCode = sport.toLowerCase();
   const sportConfig = SPORT_CONFIGS[sport] || SPORT_CONFIGS.MLB;
   const [iterations, setIterations] = useState(5000);

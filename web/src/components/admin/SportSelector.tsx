@@ -3,9 +3,9 @@
 import { ANALYTICS_SPORTS, type AnalyticsSport } from "@/lib/constants/analytics";
 
 interface SportSelectorProps {
-  value: string;
+  value: AnalyticsSport;
   onChange: (sport: AnalyticsSport) => void;
-  sports?: readonly string[];
+  sports?: readonly AnalyticsSport[];
 }
 
 export function SportSelector({ value, onChange, sports = ANALYTICS_SPORTS }: SportSelectorProps) {
@@ -14,7 +14,7 @@ export function SportSelector({ value, onChange, sports = ANALYTICS_SPORTS }: Sp
       {sports.map((s) => (
         <button
           key={s}
-          onClick={() => onChange(s as AnalyticsSport)}
+          onClick={() => onChange(s)}
           style={{
             padding: "0.4rem 0.9rem",
             borderRadius: "0.375rem",

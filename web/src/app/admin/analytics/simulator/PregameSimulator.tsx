@@ -13,7 +13,7 @@ import {
   type RosterPitcher,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
-import { SPORT_CONFIGS } from "@/lib/constants/analytics";
+import { SPORT_CONFIGS, type AnalyticsSport } from "@/lib/constants/analytics";
 import styles from "../analytics.module.css";
 import { LineupEditor, type LineupSlot } from "./LineupEditor";
 import { TeamProfileComparison } from "./TeamProfileComparison";
@@ -26,7 +26,7 @@ interface StarterSlot {
 }
 
 export function PregameSimulator() {
-  const [sport, setSport] = useState("MLB");
+  const [sport, setSport] = useState<AnalyticsSport>("MLB");
   const sportCode = sport.toLowerCase();
   const sportConfig = SPORT_CONFIGS[sport] || SPORT_CONFIGS.MLB;
   const [homeTeam, setHomeTeam] = useState("");

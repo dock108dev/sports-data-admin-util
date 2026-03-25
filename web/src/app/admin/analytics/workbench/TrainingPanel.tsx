@@ -63,7 +63,7 @@ export function TrainingPanel({ sportCode = "mlb" }: { sportCode?: string }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [sportCode]);
 
   useEffect(() => {
     refresh();
@@ -86,7 +86,7 @@ export function TrainingPanel({ sportCode = "mlb" }: { sportCode?: string }) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [jobs]);
+  }, [jobs, sportCode]);
 
   const [cancelingIds, setCancelingIds] = useState<Set<number>>(new Set());
 
