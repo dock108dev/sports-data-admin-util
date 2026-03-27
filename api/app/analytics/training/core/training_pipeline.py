@@ -259,14 +259,9 @@ class TrainingPipeline:
         joblib.dump(model, artifact_path)
 
         # Sign the artifact so the loader can verify integrity.
-        try:
-            from app.analytics.models.core.artifact_signing import sign_artifact
-            sign_artifact(artifact_path)
-        except (RuntimeError, Exception):
-            logger.warning(
-                "artifact_signing_skipped",
-                extra={"artifact": str(artifact_path)},
-            )
+        # Signing is mandatory — unsigned artifacts will be rejected at load time.
+        from app.analytics.models.core.artifact_signing import sign_artifact
+        sign_artifact(artifact_path)
 
         self._metadata.record_artifact(str(artifact_path))
         self._metadata.save(metadata_path)

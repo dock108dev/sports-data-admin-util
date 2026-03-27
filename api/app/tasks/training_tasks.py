@@ -309,6 +309,8 @@ async def _execute_backtest(
     if not artifact.is_file():
         return {"error": f"Model artifact path is not a file: {artifact_path}"}
     try:
+        from app.analytics.models.core.artifact_signing import verify_artifact
+        verify_artifact(str(artifact))
         sklearn_model = joblib.load(str(artifact))
     except Exception as exc:
         return {"error": f"Failed to load model artifact: {exc}"}

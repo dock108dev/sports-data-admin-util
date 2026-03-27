@@ -2066,10 +2066,6 @@ from app.analytics.models.core.model_registry import ModelRegistry
 )
 class TestInferenceCache:
     """Tests for InferenceCache with mandatory signing."""
-
-    @pytest.fixture(autouse=True)
-    def _set_signing_key(self, monkeypatch):
-        monkeypatch.setenv("MODEL_SIGNING_KEY", "a" * 32)
     """Tests for InferenceCache."""
 
     def test_cache_loads_and_caches_model(self, tmp_path: Path) -> None:

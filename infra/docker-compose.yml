@@ -151,6 +151,7 @@ services:
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/0
       CELERY_BROKER_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
