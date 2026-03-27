@@ -10,7 +10,9 @@ import asyncio
 import logging
 import traceback
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import Any
 
 from app.celery_app import celery_app
@@ -114,15 +116,15 @@ async def _execute_replay(sf: Any, job: Any) -> dict:
         if mlb_league_id:
             game_stmt = game_stmt.where(SportsGame.league_id == mlb_league_id)
 
-        # Apply date range
+        # Apply date range (ET boundaries so late-night games map correctly)
         if job.date_start:
-            dt_start = datetime.strptime(job.date_start, "%Y-%m-%d").replace(tzinfo=UTC)
-            game_stmt = game_stmt.where(SportsGame.game_date >= dt_start)
-        if job.date_end:
-            dt_end = datetime.strptime(job.date_end, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=UTC
+            game_stmt = game_stmt.where(
+                SportsGame.game_date >= start_of_et_day_utc(date.fromisoformat(job.date_start))
             )
-            game_stmt = game_stmt.where(SportsGame.game_date <= dt_end)
+        if job.date_end:
+            game_stmt = game_stmt.where(
+                SportsGame.game_date < end_of_et_day_utc(date.fromisoformat(job.date_end))
+            )
 
         # Apply game count limit
         if job.game_count_requested:

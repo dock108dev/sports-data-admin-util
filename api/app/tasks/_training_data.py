@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import TYPE_CHECKING
 
 from app.tasks._training_data_pa import _derive_pa_outcome  # noqa: F401
@@ -129,17 +131,10 @@ async def _load_mlb_game_training_data_impl(
     from app.db.mlb_advanced import MLBGameAdvancedStats
     from app.db.sports import SportsGame
 
-    # Parse date strings to datetime objects for timestamptz comparison
-    dt_start = (
-        datetime.strptime(date_start, "%Y-%m-%d").replace(tzinfo=UTC)
-        if date_start else None
-    )
-    dt_end = (
-        datetime.strptime(date_end, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=UTC
-        )
-        if date_end else None
-    )
+    # Parse date strings to ET-aware UTC boundaries so late-night ET
+    # games aren't misattributed to the wrong calendar day.
+    dt_start = start_of_et_day_utc(date.fromisoformat(date_start)) if date_start else None
+    dt_end = end_of_et_day_utc(date.fromisoformat(date_end)) if date_end else None
 
     train_stmt = (
         select(SportsGame)
@@ -149,7 +144,7 @@ async def _load_mlb_game_training_data_impl(
     if dt_start:
         train_stmt = train_stmt.where(SportsGame.game_date >= dt_start)
     if dt_end:
-        train_stmt = train_stmt.where(SportsGame.game_date <= dt_end)
+        train_stmt = train_stmt.where(SportsGame.game_date < dt_end)
 
     result = await db.execute(train_stmt)
     training_games = result.scalars().all()

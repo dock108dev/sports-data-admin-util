@@ -15,7 +15,9 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import TYPE_CHECKING, Any
 
 from app.analytics.datasets._profile_mixin import ProfileMixin
@@ -90,16 +92,8 @@ class MLBBattedBallDatasetBuilder(ProfileMixin):
 
         db = self._db
 
-        dt_start = (
-            datetime.strptime(date_start, "%Y-%m-%d").replace(tzinfo=UTC)
-            if date_start else None
-        )
-        dt_end = (
-            datetime.strptime(date_end, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=UTC
-            )
-            if date_end else None
-        )
+        dt_start = start_of_et_day_utc(date.fromisoformat(date_start)) if date_start else None
+        dt_end = end_of_et_day_utc(date.fromisoformat(date_end)) if date_end else None
 
         # 1. Load completed games
         game_stmt = (
@@ -110,7 +104,7 @@ class MLBBattedBallDatasetBuilder(ProfileMixin):
         if dt_start:
             game_stmt = game_stmt.where(SportsGame.game_date >= dt_start)
         if dt_end:
-            game_stmt = game_stmt.where(SportsGame.game_date <= dt_end)
+            game_stmt = game_stmt.where(SportsGame.game_date < dt_end)
 
         games_result = await db.execute(game_stmt)
         games = games_result.scalars().all()
@@ -129,7 +123,7 @@ class MLBBattedBallDatasetBuilder(ProfileMixin):
         if dt_start:
             plays_stmt = plays_stmt.where(SportsGame.game_date >= dt_start)
         if dt_end:
-            plays_stmt = plays_stmt.where(SportsGame.game_date <= dt_end)
+            plays_stmt = plays_stmt.where(SportsGame.game_date < dt_end)
         plays_result = await db.execute(plays_stmt)
         all_plays = plays_result.scalars().all()
 

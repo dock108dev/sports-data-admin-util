@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import TYPE_CHECKING
 
 from app.tasks._training_helpers import build_rolling_profile, stats_to_metrics
@@ -62,16 +64,8 @@ async def _load_mlb_pa_training_data_impl(
 
     min_games = 5
 
-    dt_start = (
-        datetime.strptime(date_start, "%Y-%m-%d").replace(tzinfo=UTC)
-        if date_start else None
-    )
-    dt_end = (
-        datetime.strptime(date_end, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=UTC
-        )
-        if date_end else None
-    )
+    dt_start = start_of_et_day_utc(date.fromisoformat(date_start)) if date_start else None
+    dt_end = end_of_et_day_utc(date.fromisoformat(date_end)) if date_end else None
 
     # 1. Get completed games in range
     game_stmt = (
@@ -82,7 +76,7 @@ async def _load_mlb_pa_training_data_impl(
     if dt_start:
         game_stmt = game_stmt.where(SportsGame.game_date >= dt_start)
     if dt_end:
-        game_stmt = game_stmt.where(SportsGame.game_date <= dt_end)
+        game_stmt = game_stmt.where(SportsGame.game_date < dt_end)
 
     result = await db.execute(game_stmt)
     games = result.scalars().all()

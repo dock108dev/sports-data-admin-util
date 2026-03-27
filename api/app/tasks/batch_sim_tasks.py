@@ -10,7 +10,9 @@ import asyncio
 import logging
 import traceback
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import TYPE_CHECKING
 
 from app.celery_app import celery_app
@@ -187,22 +189,23 @@ async def _execute_batch_sim(
         # Without dates, default to upcoming (scheduled/pregame) from today.
         game_stmt = select(SportsGame).order_by(SportsGame.game_date.asc())
 
+        # MLB games are scheduled in US Eastern time. Convert date
+        # boundaries to ET so a "March 26" sim doesn't accidentally
+        # pick up a March 25 late-night game stored as early March 26 UTC.
         if date_start:
-            dt_start = datetime.strptime(date_start, "%Y-%m-%d").replace(tzinfo=UTC)
-            game_stmt = game_stmt.where(SportsGame.game_date >= dt_start)
+            game_stmt = game_stmt.where(
+                SportsGame.game_date >= start_of_et_day_utc(date.fromisoformat(date_start))
+            )
         else:
-            # No start date — only upcoming games
+            # No start date — only upcoming games from today (ET)
             game_stmt = game_stmt.where(
                 SportsGame.status.in_(["scheduled", "pregame"]),
-                SportsGame.game_date >= datetime.now(UTC).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ),
+                SportsGame.game_date >= start_of_et_day_utc(date.today()),
             )
         if date_end:
-            dt_end = datetime.strptime(date_end, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=UTC
+            game_stmt = game_stmt.where(
+                SportsGame.game_date < end_of_et_day_utc(date.fromisoformat(date_end))
             )
-            game_stmt = game_stmt.where(SportsGame.game_date <= dt_end)
 
         # Filter to MLB games via league join
         from app.db.sports import SportsLeague

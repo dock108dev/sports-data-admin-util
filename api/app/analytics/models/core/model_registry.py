@@ -169,6 +169,17 @@ class ModelRegistry:
             "metrics": metadata or {},
         }
         models_list.append(record)
+
+        # Auto-activate if no model is currently active — ensures the
+        # first model trained after a clean slate is immediately usable
+        # for inference instead of silently falling back to rule-based defaults.
+        if bucket.get("active_model") is None:
+            bucket["active_model"] = model_id
+            logger.info(
+                "model_auto_activated",
+                extra={"model_id": model_id, "reason": "no_active_model"},
+            )
+
         self._save()
         logger.info(
             "model_registered",
