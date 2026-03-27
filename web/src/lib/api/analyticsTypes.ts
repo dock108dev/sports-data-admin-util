@@ -428,28 +428,61 @@ export interface EventPARates {
   out_pct: number;
 }
 
+// Sport-aware event team summary — shape depends on sport
 export interface EventTeamSummary {
-  avg_pa: number;
-  avg_hits: number;
-  avg_hr: number;
-  avg_bb: number;
-  avg_k: number;
-  avg_runs: number;
-  pa_rates: EventPARates;
+  // MLB fields
+  avg_pa?: number;
+  avg_hits?: number;
+  avg_hr?: number;
+  avg_bb?: number;
+  avg_k?: number;
+  avg_runs?: number;
+  pa_rates?: EventPARates;
+  // NBA/NCAAB fields
+  avg_possessions?: number;
+  avg_points?: number;
+  fg_pct?: number;
+  fg3_pct?: number;
+  efg_pct?: number;
+  avg_orb?: number;
+  // NHL fields
+  avg_shots?: number;
+  avg_goals?: number;
+  shooting_pct?: number;
+  // NFL fields
+  avg_drives?: number;
+  avg_tds?: number;
+  avg_fgs?: number;
+  scoring_drive_pct?: number;
+  // All sports: sport-specific rate breakdown
+  rates?: Record<string, number>;
 }
 
 export interface EventGameSummary {
-  avg_total_runs: number;
-  median_total_runs: number;
-  extra_innings_pct: number;
-  shutout_pct: number;
-  one_run_game_pct: number;
+  avg_total?: number;
+  median_total?: number;
+  one_score_game_pct?: number;
+  // MLB
+  avg_total_runs?: number;
+  median_total_runs?: number;
+  extra_innings_pct?: number;
+  shutout_pct?: number;
+  one_run_game_pct?: number;
+  // NBA/NCAAB/NHL/NFL
+  overtime_pct?: number;
+  shootout_pct?: number;
 }
 
 export interface EventSummary {
   home: EventTeamSummary;
   away: EventTeamSummary;
   game: EventGameSummary;
+  sport?: string;
+}
+
+export interface ScoreEntry {
+  score: string;
+  probability: number;
 }
 
 export interface BatchSimGameResult {
@@ -465,6 +498,19 @@ export interface BatchSimGameResult {
   has_profiles?: boolean;
   error?: string;
   event_summary?: EventSummary;
+  // Projected box score detail
+  score_distribution?: Record<string, number>;
+  most_common_scores?: ScoreEntry[];
+  home_wp_std_dev?: number;
+  score_std_home?: number;
+  score_std_away?: number;
+  iterations?: number;
+  profile_games_home?: number;
+  profile_games_away?: number;
+  feature_snapshot?: {
+    home?: Record<string, number>;
+    away?: Record<string, number>;
+  };
 }
 
 export interface BatchSimJob {

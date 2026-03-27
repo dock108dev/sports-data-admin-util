@@ -14,6 +14,7 @@ import {
   type PredictionOutcome,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
+import { GameDetailModal } from "@/components/admin/GameDetailModal";
 import { SPORT_CONFIGS, type AnalyticsSport } from "@/lib/constants/analytics";
 import { ROUTES } from "@/lib/constants/routes";
 import styles from "../analytics.module.css";
@@ -32,6 +33,7 @@ export default function BatchSimsPage() {
 
   const [jobs, setJobs] = useState<BatchSimJob[]>([]);
   const [jobsError, setJobsError] = useState<string | null>(null);
+  const [selectedGame, setSelectedGame] = useState<BatchSimGameResult | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
   const [accuracyData, setAccuracyData] = useState<Record<number, { outcomes: PredictionOutcome[]; loading: boolean }>>({});
   const [selectedJobs, setSelectedJobs] = useState<Set<number>>(new Set());
@@ -399,25 +401,27 @@ export default function BatchSimsPage() {
                         <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", fontSize: "0.8rem" }}>
                           <div>
                             <strong>PA Mix (Home):</strong>{" "}
-                            K {(firstEvent.home.pa_rates.k_pct * 100).toFixed(1)}%{" / "}
-                            BB {(firstEvent.home.pa_rates.bb_pct * 100).toFixed(1)}%{" / "}
-                            HR {(firstEvent.home.pa_rates.hr_pct * 100).toFixed(1)}%{" / "}
-                            Hit {((firstEvent.home.pa_rates.single_pct + firstEvent.home.pa_rates.double_pct + firstEvent.home.pa_rates.triple_pct + firstEvent.home.pa_rates.hr_pct) * 100).toFixed(1)}%
+                            K {(firstEvent.home.pa_rates?.k_pct != null ? (firstEvent.home.pa_rates.k_pct * 100).toFixed(1) : "-")}%{" / "}
+                            BB {(firstEvent.home.pa_rates?.bb_pct != null ? (firstEvent.home.pa_rates.bb_pct * 100).toFixed(1) : "-")}%{" / "}
+                            HR {(firstEvent.home.pa_rates?.hr_pct != null ? (firstEvent.home.pa_rates.hr_pct * 100).toFixed(1) : "-")}%{" / "}
+                            Hit {(firstEvent.home.pa_rates ? ((firstEvent.home.pa_rates.single_pct + firstEvent.home.pa_rates.double_pct + firstEvent.home.pa_rates.triple_pct + firstEvent.home.pa_rates.hr_pct) * 100).toFixed(1) : "-")}%
                           </div>
                           <div>
                             <strong>PA Mix (Away):</strong>{" "}
-                            K {(firstEvent.away.pa_rates.k_pct * 100).toFixed(1)}%{" / "}
-                            BB {(firstEvent.away.pa_rates.bb_pct * 100).toFixed(1)}%{" / "}
-                            HR {(firstEvent.away.pa_rates.hr_pct * 100).toFixed(1)}%{" / "}
-                            Hit {((firstEvent.away.pa_rates.single_pct + firstEvent.away.pa_rates.double_pct + firstEvent.away.pa_rates.triple_pct + firstEvent.away.pa_rates.hr_pct) * 100).toFixed(1)}%
+                            K {(firstEvent.away.pa_rates?.k_pct != null ? (firstEvent.away.pa_rates.k_pct * 100).toFixed(1) : "-")}%{" / "}
+                            BB {(firstEvent.away.pa_rates?.bb_pct != null ? (firstEvent.away.pa_rates.bb_pct * 100).toFixed(1) : "-")}%{" / "}
+                            HR {(firstEvent.away.pa_rates?.hr_pct != null ? (firstEvent.away.pa_rates.hr_pct * 100).toFixed(1) : "-")}%{" / "}
+                            Hit {(firstEvent.away.pa_rates ? ((firstEvent.away.pa_rates.single_pct + firstEvent.away.pa_rates.double_pct + firstEvent.away.pa_rates.triple_pct + firstEvent.away.pa_rates.hr_pct) * 100).toFixed(1) : "-")}%
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", fontSize: "0.8rem", marginTop: "0.25rem" }}>
                           <div>
                             <strong>Game Shape:</strong>{" "}
-                            Extra inn. {(firstEvent.game.extra_innings_pct * 100).toFixed(1)}%{" / "}
-                            Shutout {(firstEvent.game.shutout_pct * 100).toFixed(1)}%{" / "}
-                            1-run {(firstEvent.game.one_run_game_pct * 100).toFixed(1)}%
+                            {firstEvent.game.extra_innings_pct != null && <>Extra inn. {(firstEvent.game.extra_innings_pct * 100).toFixed(1)}%{" / "}</>}
+                            {firstEvent.game.overtime_pct != null && <>OT {(firstEvent.game.overtime_pct * 100).toFixed(1)}%{" / "}</>}
+                            {firstEvent.game.shootout_pct != null && <>Shootout {(firstEvent.game.shootout_pct * 100).toFixed(1)}%{" / "}</>}
+                            {firstEvent.game.shutout_pct != null && <>Shutout {(firstEvent.game.shutout_pct * 100).toFixed(1)}%{" / "}</>}
+                            {firstEvent.game.one_run_game_pct != null ? <>1-run {(firstEvent.game.one_run_game_pct * 100).toFixed(1)}%</> : firstEvent.game.one_score_game_pct != null ? <>1-score {(firstEvent.game.one_score_game_pct * 100).toFixed(1)}%</> : null}
                           </div>
                         </div>
                       </div>
@@ -466,7 +470,7 @@ export default function BatchSimsPage() {
 
               <AdminTable headers={["Matchup", "Home WP", "Away WP", "Avg Home", "Avg Away", "Source", "Status"]}>
                 {job.results.map((g: BatchSimGameResult, i: number) => (
-                  <tr key={i} style={g.error ? { opacity: 0.6 } : {}}>
+                  <tr key={i} style={g.error ? { opacity: 0.6 } : { cursor: "pointer" }} onClick={() => !g.error && setSelectedGame(g)}>
                     <td>{g.away_team} @ {g.home_team}</td>
                     {g.error ? (
                       <td colSpan={5} style={{ color: "#dc2626", fontSize: "0.8rem" }} title={g.error}>
@@ -489,6 +493,14 @@ export default function BatchSimsPage() {
           );
         })()}
       </AdminCard>
+
+      {selectedGame && (
+        <GameDetailModal
+          game={selectedGame}
+          sport={sportCode}
+          onClose={() => setSelectedGame(null)}
+        />
+      )}
     </div>
   );
 }

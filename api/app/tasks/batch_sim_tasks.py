@@ -881,6 +881,16 @@ async def _execute_batch_sim(
         }
         if "event_summary" in sim:
             game_result["event_summary"] = sim["event_summary"]
+
+        # Score distribution: top 10 most likely final scores
+        score_dist = sim.get("score_distribution", {})
+        if score_dist:
+            top_scores = sorted(score_dist.items(), key=lambda x: x[1], reverse=True)[:10]
+            game_result["score_distribution"] = dict(top_scores)
+            game_result["most_common_scores"] = [
+                {"score": s, "probability": round(p, 4)} for s, p in top_scores
+            ]
+
         sim_results.append(game_result)
 
     logger.info(
