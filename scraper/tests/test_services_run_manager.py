@@ -186,6 +186,7 @@ class TestScrapeRunManagerRun:
 class TestScrapeRunManagerBoxscores:
     """Tests for boxscore scraping in run method."""
 
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_games_from_schedule", return_value=0)
     @patch("sports_scraper.services.nhl_boxscore_ingestion.ingest_boxscores_via_nhl_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
@@ -197,7 +198,7 @@ class TestScrapeRunManagerBoxscores:
     def test_nhl_uses_api_for_boxscores(
         self, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session, mock_ingest
+        mock_get_session, mock_ingest, _mock_populate
     ):
         """NHL uses API for boxscores."""
         mock_scrapers.return_value = {}
@@ -228,6 +229,7 @@ class TestScrapeRunManagerBoxscores:
         assert result["games_enriched"] == 3
         assert result["games_with_stats"] == 2
 
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_games_from_schedule", return_value=0)
     @patch("sports_scraper.services.nhl_boxscore_ingestion.ingest_boxscores_via_nhl_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
@@ -239,7 +241,7 @@ class TestScrapeRunManagerBoxscores:
     def test_nhl_boxscore_handles_api_error(
         self, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session, mock_ingest
+        mock_get_session, mock_ingest, _mock_populate
     ):
         """NHL boxscore handles API errors gracefully."""
         mock_scrapers.return_value = {}
@@ -267,6 +269,7 @@ class TestScrapeRunManagerBoxscores:
         result = manager.run(1, config)
         assert result["games"] == 0
 
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_games_from_schedule", return_value=0)
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.ingest_boxscores_via_ncaab_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
@@ -278,7 +281,7 @@ class TestScrapeRunManagerBoxscores:
     def test_ncaab_boxscore_handles_api_error(
         self, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session, mock_ingest
+        mock_get_session, mock_ingest, _mock_populate
     ):
         """NCAAB boxscore handles API errors gracefully."""
         mock_scrapers.return_value = {}
@@ -306,6 +309,7 @@ class TestScrapeRunManagerBoxscores:
         result = manager.run(1, config)
         assert result["games"] == 0
 
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_games_from_schedule", return_value=0)
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.ingest_boxscores_via_ncaab_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
@@ -317,7 +321,7 @@ class TestScrapeRunManagerBoxscores:
     def test_ncaab_uses_api_for_boxscores(
         self, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session, mock_ingest
+        mock_get_session, mock_ingest, _mock_populate
     ):
         """NCAAB uses API for boxscores."""
         mock_scrapers.return_value = {}
@@ -455,9 +459,13 @@ class TestScrapeRunManagerBoxscores:
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_select
     ):
-        """Skips games with missing source key."""
+        """Skips games with missing source key.
+
+        Uses NCAAF (Sports Reference path) to test the only_missing
+        source-key-skip logic without triggering NBA/NHL API imports.
+        """
         mock_scraper = MagicMock()
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -471,7 +479,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -500,10 +508,14 @@ class TestScrapeRunManagerBoxscores:
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_select
     ):
-        """Handles boxscore fetch errors gracefully."""
+        """Handles boxscore fetch errors gracefully.
+
+        Uses NCAAF (Sports Reference path) to test the error handling
+        without triggering NBA/NHL API imports.
+        """
         mock_scraper = MagicMock()
         mock_scraper.fetch_single_boxscore.side_effect = Exception("Scrape error")
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -516,7 +528,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -595,13 +607,17 @@ class TestScrapeRunManagerBoxscores:
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_persist
     ):
-        """Skips games with missing source_game_key in date range."""
+        """Skips games with missing source_game_key in date range.
+
+        Uses NCAAF (Sports Reference path) to test the source-key-skip
+        logic in the fetch_date_range branch without triggering API imports.
+        """
         mock_scraper = MagicMock()
         mock_payload = MagicMock()
         mock_payload.identity.source_game_key = None  # Missing key
         mock_payload.identity.game_date = date(2024, 1, 15)
         mock_scraper.fetch_date_range.return_value = [mock_payload]
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -612,7 +628,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -1040,9 +1056,13 @@ class TestScrapeRunManagerPbp:
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_ingest
     ):
-        """Sports Reference PBP handles errors gracefully."""
+        """Sports Reference PBP handles errors gracefully.
+
+        Uses NCAAF (Sports Reference path) so the sportsref mock
+        is actually exercised.
+        """
         mock_scraper = MagicMock()
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
         mock_session = MagicMock()
         mock_run = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = mock_run
@@ -1054,7 +1074,7 @@ class TestScrapeRunManagerPbp:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=False,
