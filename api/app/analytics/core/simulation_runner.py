@@ -149,9 +149,10 @@ class SimulationRunner:
             "score_std_away": round(score_std_away, 4),
         }
 
-        # Add event summary if results contain event data
+        # Add sport-aware event summary if results contain event data
         if sim_results and "home_events" in sim_results[0]:
-            summary["event_summary"] = self._aggregate_events(sim_results)
+            from .event_aggregation import aggregate_events
+            summary["event_summary"] = aggregate_events(sim_results)
 
         # Add average pitches per game if results contain pitch counts
         if sim_results and "total_pitches" in sim_results[0]:

@@ -109,9 +109,11 @@ async def _run_batch_sim(
                     job.status = "completed"
                     job.game_count = result.get("game_count")
                     job.results = result.get("results")
-                    # Save individual predictions for outcome tracking
+                    # Save predictions + immediately record outcomes for final games
                     await _save_prediction_outcomes(
-                        db, job_id, job.sport, job.probability_mode, result.get("results") or []
+                        db, job_id, job.sport, job.probability_mode,
+                        result.get("results") or [],
+                        games_by_id=result.get("_games_by_id"),
                     )
                 job.completed_at = datetime.now(UTC)
                 await db.commit()
@@ -120,6 +122,8 @@ async def _run_batch_sim(
         final_status = "error" if "error" in result else "success"
         await _complete_job_run(sf, run_id, final_status, summary_data=summary)
 
+    # Strip internal-only keys before returning (ORM objects aren't serializable)
+    result.pop("_games_by_id", None)
     return result
 
 
@@ -129,14 +133,22 @@ async def _save_prediction_outcomes(
     sport: str,
     probability_mode: str,
     results: list[dict],
+    games_by_id: dict | None = None,
 ) -> None:
-    """Persist per-game predictions from a batch sim for later outcome matching."""
+    """Persist per-game predictions; immediately record outcomes for final games.
+
+    If the game is already final (historical backtest), scores and
+    correct_winner are filled in right away rather than waiting for the
+    periodic ``record_completed_outcomes`` task.
+    """
+    from datetime import UTC, datetime
+
     from app.db.analytics import AnalyticsPredictionOutcome
 
     for game_result in results:
-        # Skip error-only entries from failed per-game simulations
         if "error" in game_result or "home_win_probability" not in game_result:
             continue
+
         outcome = AnalyticsPredictionOutcome(
             game_id=game_result["game_id"],
             sport=sport,
@@ -149,7 +161,6 @@ async def _save_prediction_outcomes(
             predicted_away_score=game_result.get("average_away_score"),
             probability_mode=probability_mode,
             game_date=game_result.get("game_date"),
-            # Sim observability columns for model-odds pipeline
             sim_wp_std_dev=game_result.get("home_wp_std_dev"),
             sim_iterations=game_result.get("iterations"),
             sim_score_std_home=game_result.get("score_std_home"),
@@ -159,7 +170,443 @@ async def _save_prediction_outcomes(
             sim_probability_source=game_result.get("probability_source"),
             feature_snapshot=game_result.get("feature_snapshot"),
         )
+
+        # Immediately record outcome if game is already final
+        game = games_by_id.get(game_result["game_id"]) if games_by_id else None
+        if (
+            game is not None
+            and game.status in ("final", "archived")
+            and game.home_score is not None
+            and game.away_score is not None
+        ):
+            home_win_actual = game.home_score > game.away_score
+            predicted_home_win = outcome.predicted_home_wp > 0.5
+            actual = 1.0 if home_win_actual else 0.0
+
+            outcome.actual_home_score = game.home_score
+            outcome.actual_away_score = game.away_score
+            outcome.home_win_actual = home_win_actual
+            outcome.correct_winner = predicted_home_win == home_win_actual
+            outcome.brier_score = round((outcome.predicted_home_wp - actual) ** 2, 6)
+            outcome.outcome_recorded_at = datetime.now(UTC)
+
         db.add(outcome)
+
+
+def _get_advanced_stats_model(sport: str):
+    """Return the advanced stats ORM model for a sport."""
+    if sport == "nba":
+        from app.db.nba_advanced import NBAGameAdvancedStats
+        return NBAGameAdvancedStats
+    if sport == "ncaab":
+        from app.db.ncaab_advanced import NCAABGameAdvancedStats
+        return NCAABGameAdvancedStats
+    if sport == "nhl":
+        from app.db.nhl_advanced import NHLGameAdvancedStats
+        return NHLGameAdvancedStats
+    if sport == "nfl":
+        from app.db.nfl_advanced import NFLGameAdvancedStats
+        return NFLGameAdvancedStats
+    from app.db.mlb_advanced import MLBGameAdvancedStats
+    return MLBGameAdvancedStats
+
+
+async def _try_build_nba_rotation_weights(
+    db: AsyncSession,
+    game,
+    game_context: dict,
+    home_profile: dict | None,
+    away_profile: dict | None,
+    rolling_window: int,
+) -> bool:
+    """Attempt to build starter/bench rotation weights for an NBA game.
+
+    For final games: reconstructs rotation from NBAPlayerAdvancedStats.
+    For scheduled/pregame games: uses most recent rotation.
+
+    Returns True if rotation weights were built, False otherwise.
+    """
+    from app.analytics.services.nba_rotation_service import (
+        get_recent_rotation,
+        reconstruct_rotation_from_stats,
+    )
+    from app.analytics.services.nba_rotation_weights import build_rotation_weights
+
+    is_final = game.status in ("final", "archived")
+
+    if is_final:
+        home_rotation = await reconstruct_rotation_from_stats(db, game.id, game.home_team_id)
+        away_rotation = await reconstruct_rotation_from_stats(db, game.id, game.away_team_id)
+    else:
+        home_rotation = await get_recent_rotation(db, game.home_team_id, exclude_game_id=game.id)
+        away_rotation = await get_recent_rotation(db, game.away_team_id, exclude_game_id=game.id)
+
+    if not home_rotation or not away_rotation:
+        return False
+
+    # Get opposing defense ratings for matchup adjustments
+    away_def = (away_profile or {}).get("def_rating")
+    home_def = (home_profile or {}).get("def_rating")
+
+    home_weights = await build_rotation_weights(
+        db, home_rotation, game.home_team_id,
+        opposing_def_rating=away_def,
+        rolling_window=rolling_window,
+    )
+    away_weights = await build_rotation_weights(
+        db, away_rotation, game.away_team_id,
+        opposing_def_rating=home_def,
+        rolling_window=rolling_window,
+    )
+
+    game_context["home_starter_weights"] = home_weights["starter_weights"]
+    game_context["home_bench_weights"] = home_weights["bench_weights"]
+    game_context["home_starter_share"] = home_weights["starter_share"]
+    game_context["home_ft_pct_starter"] = home_weights["ft_pct_starter"]
+    game_context["home_ft_pct_bench"] = home_weights["ft_pct_bench"]
+
+    game_context["away_starter_weights"] = away_weights["starter_weights"]
+    game_context["away_bench_weights"] = away_weights["bench_weights"]
+    game_context["away_starter_share"] = away_weights["starter_share"]
+    game_context["away_ft_pct_starter"] = away_weights["ft_pct_starter"]
+    game_context["away_ft_pct_bench"] = away_weights["ft_pct_bench"]
+
+    logger.info(
+        "batch_sim_nba_rotation_built",
+        extra={
+            "game_id": game.id,
+            "home_starters": len(home_rotation["starters"]),
+            "away_starters": len(away_rotation["starters"]),
+            "home_resolved": home_weights["players_resolved"],
+            "away_resolved": away_weights["players_resolved"],
+            "home_starter_share": home_weights["starter_share"],
+            "away_starter_share": away_weights["starter_share"],
+        },
+    )
+    return True
+
+
+async def _try_build_nfl_drive_weights(
+    db: AsyncSession,
+    game,
+    game_context: dict,
+    home_profile: dict | None,
+    away_profile: dict | None,
+    rolling_window: int,
+) -> bool:
+    """Build drive outcome weights for an NFL game.
+
+    Uses team EPA profiles + defensive boxscore stats to create
+    matchup-specific drive outcome probabilities.
+    """
+    from app.analytics.services.nfl_drive_weights import build_drive_weights
+
+    result = await build_drive_weights(
+        db, game, home_profile, away_profile, rolling_window,
+    )
+
+    if result is None:
+        return False
+
+    game_context["home_drive_weights"] = result["home_drive_weights"]
+    game_context["away_drive_weights"] = result["away_drive_weights"]
+    game_context["home_xp_pct"] = result["home_xp_pct"]
+    game_context["away_xp_pct"] = result["away_xp_pct"]
+    game_context["home_fg_pct"] = result["home_fg_pct"]
+    game_context["away_fg_pct"] = result["away_fg_pct"]
+
+    logger.info(
+        "batch_sim_nfl_drive_weights_built",
+        extra={"game_id": game.id},
+    )
+    return True
+
+
+async def _try_build_nhl_rotation_weights(
+    db: AsyncSession,
+    game,
+    game_context: dict,
+    home_profile: dict | None,
+    away_profile: dict | None,
+    rolling_window: int,
+) -> bool:
+    """Attempt to build top-line/depth rotation weights for an NHL game."""
+    from app.analytics.services.nhl_rotation_service import (
+        get_recent_rotation,
+        reconstruct_rotation_from_stats,
+    )
+    from app.analytics.services.nhl_rotation_weights import build_rotation_weights
+
+    is_final = game.status in ("final", "archived")
+
+    if is_final:
+        home_rotation = await reconstruct_rotation_from_stats(db, game.id, game.home_team_id)
+        away_rotation = await reconstruct_rotation_from_stats(db, game.id, game.away_team_id)
+    else:
+        home_rotation = await get_recent_rotation(db, game.home_team_id, exclude_game_id=game.id)
+        away_rotation = await get_recent_rotation(db, game.away_team_id, exclude_game_id=game.id)
+
+    if not home_rotation or not away_rotation:
+        return False
+
+    # Get opposing goalie save% for goal probability adjustments
+    away_goalie = away_rotation.get("goalie", {})
+    home_goalie = home_rotation.get("goalie", {})
+    away_save_pct = away_goalie.get("save_pct") if away_goalie else None
+    home_save_pct = home_goalie.get("save_pct") if home_goalie else None
+
+    home_weights = await build_rotation_weights(
+        db, home_rotation, game.home_team_id,
+        opposing_goalie_save_pct=away_save_pct,
+        rolling_window=rolling_window,
+    )
+    away_weights = await build_rotation_weights(
+        db, away_rotation, game.away_team_id,
+        opposing_goalie_save_pct=home_save_pct,
+        rolling_window=rolling_window,
+    )
+
+    game_context["home_starter_weights"] = home_weights["starter_weights"]
+    game_context["home_bench_weights"] = home_weights["bench_weights"]
+    game_context["home_starter_share"] = home_weights["starter_share"]
+
+    game_context["away_starter_weights"] = away_weights["starter_weights"]
+    game_context["away_bench_weights"] = away_weights["bench_weights"]
+    game_context["away_starter_share"] = away_weights["starter_share"]
+
+    logger.info(
+        "batch_sim_nhl_rotation_built",
+        extra={
+            "game_id": game.id,
+            "home_resolved": home_weights["players_resolved"],
+            "away_resolved": away_weights["players_resolved"],
+            "home_goalie": away_goalie.get("name") if away_goalie else None,
+            "away_goalie": home_goalie.get("name") if home_goalie else None,
+        },
+    )
+    return True
+
+
+async def _try_build_ncaab_rotation_weights(
+    db: AsyncSession,
+    game,
+    game_context: dict,
+    home_profile: dict | None,
+    away_profile: dict | None,
+    rolling_window: int,
+) -> bool:
+    """Attempt to build starter/bench rotation weights for an NCAAB game."""
+    from app.analytics.services.ncaab_rotation_service import (
+        get_recent_rotation,
+        reconstruct_rotation_from_stats,
+    )
+    from app.analytics.services.ncaab_rotation_weights import build_rotation_weights
+
+    is_final = game.status in ("final", "archived")
+
+    if is_final:
+        home_rotation = await reconstruct_rotation_from_stats(db, game.id, game.home_team_id)
+        away_rotation = await reconstruct_rotation_from_stats(db, game.id, game.away_team_id)
+    else:
+        home_rotation = await get_recent_rotation(db, game.home_team_id, exclude_game_id=game.id)
+        away_rotation = await get_recent_rotation(db, game.away_team_id, exclude_game_id=game.id)
+
+    if not home_rotation or not away_rotation:
+        return False
+
+    away_def = (away_profile or {}).get("def_rating")
+    home_def = (home_profile or {}).get("def_rating")
+
+    home_weights = await build_rotation_weights(
+        db, home_rotation, game.home_team_id,
+        opposing_def_rating=away_def,
+        rolling_window=rolling_window,
+    )
+    away_weights = await build_rotation_weights(
+        db, away_rotation, game.away_team_id,
+        opposing_def_rating=home_def,
+        rolling_window=rolling_window,
+    )
+
+    game_context["home_starter_weights"] = home_weights["starter_weights"]
+    game_context["home_bench_weights"] = home_weights["bench_weights"]
+    game_context["home_starter_share"] = home_weights["starter_share"]
+    game_context["home_ft_pct_starter"] = home_weights["ft_pct_starter"]
+    game_context["home_ft_pct_bench"] = home_weights["ft_pct_bench"]
+    game_context["home_orb_pct_starter"] = home_weights["orb_pct_starter"]
+    game_context["home_orb_pct_bench"] = home_weights["orb_pct_bench"]
+
+    game_context["away_starter_weights"] = away_weights["starter_weights"]
+    game_context["away_bench_weights"] = away_weights["bench_weights"]
+    game_context["away_starter_share"] = away_weights["starter_share"]
+    game_context["away_ft_pct_starter"] = away_weights["ft_pct_starter"]
+    game_context["away_ft_pct_bench"] = away_weights["ft_pct_bench"]
+    game_context["away_orb_pct_starter"] = away_weights["orb_pct_starter"]
+    game_context["away_orb_pct_bench"] = away_weights["orb_pct_bench"]
+
+    logger.info(
+        "batch_sim_ncaab_rotation_built",
+        extra={
+            "game_id": game.id,
+            "home_resolved": home_weights["players_resolved"],
+            "away_resolved": away_weights["players_resolved"],
+        },
+    )
+    return True
+
+
+async def _try_build_lineup_weights(
+    db: AsyncSession,
+    game,
+    game_context: dict,
+    home_profile: dict | None,
+    away_profile: dict | None,
+    rolling_window: int,
+) -> bool:
+    """Attempt to build per-batter lineup weights for a game.
+
+    For final games: reconstructs batting order from PBP.
+    For scheduled/pregame games: uses most recent lineup + probable pitcher.
+
+    Returns True if lineup weights were successfully built and added to
+    ``game_context``, False otherwise (caller should fall back to team-level).
+    """
+    from app.analytics.services.lineup_fetcher import (
+        fetch_probable_starter,
+        fetch_recent_lineup,
+        get_team_external_ref,
+    )
+    from app.analytics.services.lineup_reconstruction import (
+        get_starting_pitcher,
+        reconstruct_lineup_from_pbp,
+    )
+    from app.analytics.services.lineup_weights import (
+        build_lineup_weights,
+        pitching_metrics_from_profile,
+        regress_pitcher_profile,
+    )
+    from app.analytics.services.profile_service import get_pitcher_rolling_profile
+
+    fallback_pitcher = {
+        "strikeout_rate": 0.22, "walk_rate": 0.08,
+        "contact_suppression": 0.0, "power_suppression": 0.0,
+    }
+
+    is_final = game.status in ("final", "archived")
+
+    # --- Get lineups ---
+    if is_final:
+        home_lineup_data = await reconstruct_lineup_from_pbp(
+            db, game.id, game.home_team_id,
+        )
+        away_lineup_data = await reconstruct_lineup_from_pbp(
+            db, game.id, game.away_team_id,
+        )
+    else:
+        home_lineup_batters = await fetch_recent_lineup(
+            db, game.home_team_id, before_game_id=game.id,
+        )
+        away_lineup_batters = await fetch_recent_lineup(
+            db, game.away_team_id, before_game_id=game.id,
+        )
+        home_lineup_data = {"batters": home_lineup_batters} if home_lineup_batters else None
+        away_lineup_data = {"batters": away_lineup_batters} if away_lineup_batters else None
+
+    if not home_lineup_data or not away_lineup_data:
+        return False
+
+    home_batters = home_lineup_data["batters"]
+    away_batters = away_lineup_data["batters"]
+
+    if len(home_batters) < 3 or len(away_batters) < 3:
+        return False
+
+    # --- Get starting pitchers ---
+    # Away starter faces home lineup; home starter faces away lineup
+    away_sp_info: dict | None = None
+    home_sp_info: dict | None = None
+
+    if is_final:
+        # For final games, get the actual starter from pitcher stats
+        away_sp_info = await get_starting_pitcher(db, game.id, game.away_team_id)
+        home_sp_info = await get_starting_pitcher(db, game.id, game.home_team_id)
+    else:
+        # For future games, try MLB Stats API probable pitchers
+        from app.utils.datetime_utils import to_et_date
+        game_date = to_et_date(game.game_date) if game.game_date else None
+        if game_date:
+            away_ext = await get_team_external_ref(db, game.away_team_id)
+            home_ext = await get_team_external_ref(db, game.home_team_id)
+            if away_ext:
+                away_sp_info = await fetch_probable_starter(game_date, away_ext)
+            if home_ext:
+                home_sp_info = await fetch_probable_starter(game_date, home_ext)
+
+    # --- Get pitcher profiles ---
+    away_sp_profile = fallback_pitcher
+    home_sp_profile = fallback_pitcher
+    away_sp_avg_ip: float | None = None
+    home_sp_avg_ip: float | None = None
+
+    if away_sp_info:
+        raw = await get_pitcher_rolling_profile(
+            away_sp_info["external_ref"], game.away_team_id,
+            rolling_window=rolling_window, db=db,
+        )
+        if raw:
+            away_sp_avg_ip = away_sp_info.get("avg_ip")
+            away_sp_profile = regress_pitcher_profile(raw, away_sp_avg_ip)
+
+    if home_sp_info:
+        raw = await get_pitcher_rolling_profile(
+            home_sp_info["external_ref"], game.home_team_id,
+            rolling_window=rolling_window, db=db,
+        )
+        if raw:
+            home_sp_avg_ip = home_sp_info.get("avg_ip")
+            home_sp_profile = regress_pitcher_profile(raw, home_sp_avg_ip)
+
+    # Bullpen profiles derived from opposing team's batting tendencies
+    away_bullpen = pitching_metrics_from_profile(away_profile) or fallback_pitcher
+    home_bullpen = pitching_metrics_from_profile(home_profile) or fallback_pitcher
+
+    # --- Build per-batter weights ---
+    # Home batters face away starter/bullpen
+    home_weights = await build_lineup_weights(
+        db, home_batters, game.home_team_id,
+        opposing_starter_profile=away_sp_profile,
+        opposing_bullpen_profile=away_bullpen,
+        team_profile=home_profile,
+        rolling_window=rolling_window,
+    )
+    # Away batters face home starter/bullpen
+    away_weights = await build_lineup_weights(
+        db, away_batters, game.away_team_id,
+        opposing_starter_profile=home_sp_profile,
+        opposing_bullpen_profile=home_bullpen,
+        team_profile=away_profile,
+        rolling_window=rolling_window,
+    )
+
+    game_context["home_lineup_weights"] = home_weights["starter_weights"]
+    game_context["away_lineup_weights"] = away_weights["starter_weights"]
+    game_context["home_bullpen_weights"] = home_weights["bullpen_weights"]
+    game_context["away_bullpen_weights"] = away_weights["bullpen_weights"]
+    game_context["starter_innings"] = 6.0
+
+    logger.info(
+        "batch_sim_lineup_built",
+        extra={
+            "game_id": game.id,
+            "home_batters": len(home_batters),
+            "away_batters": len(away_batters),
+            "home_resolved": home_weights["batters_resolved"],
+            "away_resolved": away_weights["batters_resolved"],
+            "home_sp": home_sp_info.get("name") if home_sp_info else None,
+            "away_sp": away_sp_info.get("name") if away_sp_info else None,
+        },
+    )
+    return True
 
 
 async def _execute_batch_sim(
@@ -177,27 +624,22 @@ async def _execute_batch_sim(
     from sqlalchemy import select
 
     from app.analytics.core.simulation_engine import SimulationEngine
-    from app.db.mlb_advanced import MLBGameAdvancedStats
-    from app.db.sports import SportsGame, SportsTeam
+    from app.db.sports import SportsGame, SportsLeague, SportsTeam
 
-    if sport.lower() != "mlb":
-        return {"error": "only_mlb_supported"}
+    sport_lower = sport.lower()
+    if sport_lower not in ("mlb", "nba", "ncaab", "nhl", "nfl"):
+        return {"error": "sport_not_supported", "supported": ["mlb", "nba", "ncaab", "nhl", "nfl"]}
 
     async with sf() as db:
         # 1. Find games to simulate
-        # When a date range is provided, include all games (historical + future).
-        # Without dates, default to upcoming (scheduled/pregame) from today.
         game_stmt = select(SportsGame).order_by(SportsGame.game_date.asc())
 
-        # MLB games are scheduled in US Eastern time. Convert date
-        # boundaries to ET so a "March 26" sim doesn't accidentally
-        # pick up a March 25 late-night game stored as early March 26 UTC.
+        # Convert date boundaries to ET so late-night games map correctly.
         if date_start:
             game_stmt = game_stmt.where(
                 SportsGame.game_date >= start_of_et_day_utc(date.fromisoformat(date_start))
             )
         else:
-            # No start date — only upcoming games from today (ET)
             game_stmt = game_stmt.where(
                 SportsGame.status.in_(["scheduled", "pregame"]),
                 SportsGame.game_date >= start_of_et_day_utc(date.today()),
@@ -207,14 +649,14 @@ async def _execute_batch_sim(
                 SportsGame.game_date < end_of_et_day_utc(date.fromisoformat(date_end))
             )
 
-        # Filter to MLB games via league join
-        from app.db.sports import SportsLeague
-        mlb_league = await db.execute(
-            select(SportsLeague.id).where(SportsLeague.code == "MLB")
+        # Filter to sport's league
+        league_code = sport.upper()
+        league_result = await db.execute(
+            select(SportsLeague.id).where(SportsLeague.code == league_code)
         )
-        mlb_league_id = mlb_league.scalar_one_or_none()
-        if mlb_league_id:
-            game_stmt = game_stmt.where(SportsGame.league_id == mlb_league_id)
+        league_id = league_result.scalar_one_or_none()
+        if league_id:
+            game_stmt = game_stmt.where(SportsGame.league_id == league_id)
 
         game_result = await db.execute(game_stmt)
         upcoming_games = game_result.scalars().all()
@@ -233,21 +675,20 @@ async def _execute_batch_sim(
         teams = {t.id: t for t in team_result.scalars().all()}
 
         # 3. Load all historical advanced stats for rolling profiles
+        AdvancedStatsModel = _get_advanced_stats_model(sport_lower)
         all_stats_stmt = (
-            select(MLBGameAdvancedStats)
-            .join(SportsGame, SportsGame.id == MLBGameAdvancedStats.game_id)
+            select(AdvancedStatsModel)
+            .join(SportsGame, SportsGame.id == AdvancedStatsModel.game_id)
             .where(SportsGame.status == "final")
             .order_by(SportsGame.game_date.asc())
         )
         stats_result = await db.execute(all_stats_stmt)
         all_stats = stats_result.scalars().all()
 
-        # Index by game_id
         stats_by_game: dict[int, list] = defaultdict(list)
         for s in all_stats:
             stats_by_game[s.game_id].append(s)
 
-        # Get dates for all games with stats
         all_game_ids = list(stats_by_game.keys())
         game_dates: dict[int, str] = {}
         if all_game_ids:
@@ -258,7 +699,6 @@ async def _execute_batch_sim(
             for gid, gdate in dates_result:
                 game_dates[gid] = str(gdate)
 
-        # Build per-team chronological history
         team_history: dict[int, list[tuple[str, object]]] = defaultdict(list)
         for game_id, stats_list in stats_by_game.items():
             gdate = game_dates.get(game_id, "")
@@ -288,12 +728,14 @@ async def _execute_batch_sim(
             before_date=profile_cutoff,
             window=rolling_window,
             min_games=3,
+            sport=sport_lower,
         )
         away_profile = _build_rolling_profile(
             team_history.get(game.away_team_id, []),
             before_date=profile_cutoff,
             window=rolling_window,
             min_games=3,
+            sport=sport_lower,
         )
 
         # Build game context for SimulationEngine
@@ -304,44 +746,82 @@ async def _execute_batch_sim(
 
         has_profiles = bool(home_profile and away_profile)
         use_ml = model_id or probability_mode in ("ml", "ensemble")
+        lineup_mode = False
 
-        if has_profiles and use_ml:
-            # ML pipeline — attach profiles for the resolver
-            game_context["profiles"] = {
-                "home_profile": {"metrics": home_profile},
-                "away_profile": {"metrics": away_profile},
-            }
-            game_context["probability_mode"] = probability_mode
-            if model_id:
-                game_context["_model_id"] = model_id
-        elif has_profiles:
-            # Rule-based: convert profiles directly to PA probabilities
-            from app.analytics.services.profile_service import profile_to_pa_probabilities
-            home_pa = profile_to_pa_probabilities(home_profile)
-            away_pa = profile_to_pa_probabilities(away_profile)
-            game_context["home_probabilities"] = home_pa
-            game_context["away_probabilities"] = away_pa
-        elif use_ml:
-            # ML/model_id requested but profiles unavailable — still set
-            # the mode so the engine can attempt inference (and fail
-            # visibly) rather than silently falling back to defaults.
-            game_context["probability_mode"] = probability_mode
-            if model_id:
-                game_context["_model_id"] = model_id
-            logger.warning(
-                "batch_sim_missing_profiles_for_ml",
-                extra={
-                    "game_id": game.id,
-                    "probability_mode": probability_mode,
-                    "model_id": model_id,
-                },
+        # ----------------------------------------------------------
+        # Attempt lineup/rotation-aware simulation
+        # ----------------------------------------------------------
+        try:
+            if sport_lower == "nba":
+                lineup_mode = await _try_build_nba_rotation_weights(
+                    db, game, game_context,
+                    home_profile, away_profile,
+                    rolling_window,
+                )
+            elif sport_lower == "ncaab":
+                lineup_mode = await _try_build_ncaab_rotation_weights(
+                    db, game, game_context,
+                    home_profile, away_profile,
+                    rolling_window,
+                )
+            elif sport_lower == "nhl":
+                lineup_mode = await _try_build_nhl_rotation_weights(
+                    db, game, game_context,
+                    home_profile, away_profile,
+                    rolling_window,
+                )
+            elif sport_lower == "nfl":
+                lineup_mode = await _try_build_nfl_drive_weights(
+                    db, game, game_context,
+                    home_profile, away_profile,
+                    rolling_window,
+                )
+            else:
+                lineup_mode = await _try_build_lineup_weights(
+                    db, game, game_context,
+                    home_profile, away_profile,
+                    rolling_window,
+                )
+        except Exception as exc:
+            logger.info(
+                "lineup_weight_build_skipped",
+                extra={"game_id": game.id, "error": str(exc)},
             )
-        # else: no profiles, rule-based mode → league defaults (no overrides)
+
+        if not lineup_mode:
+            # Fall back to team-level probability resolution
+            if has_profiles and use_ml:
+                game_context["profiles"] = {
+                    "home_profile": {"metrics": home_profile},
+                    "away_profile": {"metrics": away_profile},
+                }
+                game_context["probability_mode"] = probability_mode
+                if model_id:
+                    game_context["_model_id"] = model_id
+            elif has_profiles:
+                from app.analytics.services.profile_service import profile_to_pa_probabilities
+                home_pa = profile_to_pa_probabilities(home_profile)
+                away_pa = profile_to_pa_probabilities(away_profile)
+                game_context["home_probabilities"] = home_pa
+                game_context["away_probabilities"] = away_pa
+            elif use_ml:
+                game_context["probability_mode"] = probability_mode
+                if model_id:
+                    game_context["_model_id"] = model_id
+                logger.warning(
+                    "batch_sim_missing_profiles_for_ml",
+                    extra={
+                        "game_id": game.id,
+                        "probability_mode": probability_mode,
+                        "model_id": model_id,
+                    },
+                )
 
         try:
             sim = engine.run_simulation(
                 game_context=game_context,
                 iterations=iterations,
+                use_lineup=lineup_mode,
             )
         except Exception as exc:
             logger.warning(
@@ -358,7 +838,9 @@ async def _execute_batch_sim(
             continue
 
         # Derive accurate probability_source from what actually ran
-        if "probability_source" in sim:
+        if lineup_mode:
+            prob_source = "lineup_matchup"
+        elif "probability_source" in sim:
             prob_source = sim["probability_source"]
         elif has_profiles:
             prob_source = "team_profile"
@@ -399,6 +881,16 @@ async def _execute_batch_sim(
         }
         if "event_summary" in sim:
             game_result["event_summary"] = sim["event_summary"]
+
+        # Score distribution: top 10 most likely final scores
+        score_dist = sim.get("score_distribution", {})
+        if score_dist:
+            top_scores = sorted(score_dist.items(), key=lambda x: x[1], reverse=True)[:10]
+            game_result["score_distribution"] = dict(top_scores)
+            game_result["most_common_scores"] = [
+                {"score": s, "probability": round(p, 4)} for s, p in top_scores
+            ]
+
         sim_results.append(game_result)
 
     logger.info(
@@ -409,9 +901,13 @@ async def _execute_batch_sim(
     # Build batch summary and sanity warnings
     batch_summary, batch_warnings = _build_batch_summary(sim_results)
 
+    # Build a game lookup so outcome recording can fill in scores immediately
+    games_lookup = {g.id: g for g in upcoming_games}
+
     result_payload: dict = {
         "game_count": len(sim_results),
         "results": sim_results,
+        "_games_by_id": games_lookup,
     }
     if batch_summary:
         result_payload["batch_summary"] = batch_summary
@@ -541,5 +1037,107 @@ def _count_profile_games(
 # ---------------------------------------------------------------------------
 
 from app.tasks._training_helpers import (  # noqa: E402
-    build_rolling_profile as _build_rolling_profile,
+    build_rolling_profile as _build_rolling_profile_mlb,
 )
+
+
+def _nba_stats_to_metrics(stats) -> dict:
+    """Convert NBAGameAdvancedStats row to a flat metrics dict."""
+    return {
+        "off_rating": float(stats.off_rating or 114.0),
+        "def_rating": float(stats.def_rating or 114.0),
+        "net_rating": float(stats.net_rating or 0.0),
+        "pace": float(stats.pace or 100.0),
+        "efg_pct": float(stats.efg_pct or 0.54),
+        "ts_pct": float(stats.ts_pct or 0.58),
+        "tov_pct": float(stats.tov_pct or 0.13),
+        "orb_pct": float(stats.orb_pct or 0.25),
+        "ft_rate": float(stats.ft_rate or 0.27),
+        "fg3_pct": float(stats.fg3_pct or 0.35),
+        "ft_pct": float(stats.ft_pct or 0.78),
+        "ast_pct": float(stats.ast_pct or 0.60),
+    }
+
+
+def _nfl_stats_to_metrics(stats) -> dict:
+    """Convert NFLGameAdvancedStats row to a flat metrics dict."""
+    return {
+        "epa_per_play": float(stats.epa_per_play or 0.0),
+        "pass_epa": float(stats.pass_epa or 0.0),
+        "rush_epa": float(stats.rush_epa or 0.0),
+        "success_rate": float(stats.success_rate or 0.45),
+        "pass_success_rate": float(stats.pass_success_rate or 0.45),
+        "rush_success_rate": float(stats.rush_success_rate or 0.40),
+        "explosive_play_rate": float(stats.explosive_play_rate or 0.08),
+        "avg_cpoe": float(stats.avg_cpoe or 0.0),
+        "total_plays": float(stats.total_plays or 60),
+        "pass_plays": float(stats.pass_plays or 35),
+        "rush_plays": float(stats.rush_plays or 25),
+    }
+
+
+def _nhl_stats_to_metrics(stats) -> dict:
+    """Convert NHLGameAdvancedStats row to a flat metrics dict."""
+    return {
+        "xgoals_for": float(stats.xgoals_for or 2.8),
+        "xgoals_against": float(stats.xgoals_against or 2.8),
+        "corsi_pct": float(stats.corsi_pct or 0.50),
+        "fenwick_pct": float(stats.fenwick_pct or 0.50),
+        "shooting_pct": float(stats.shooting_pct or 9.0),
+        "save_pct": float(stats.save_pct or 91.0),
+        "pdo": float(stats.pdo or 100.0),
+        "shots_for": float(stats.shots_for or 30),
+        "shots_against": float(stats.shots_against or 30),
+    }
+
+
+def _ncaab_stats_to_metrics(stats) -> dict:
+    """Convert NCAABGameAdvancedStats row to a flat metrics dict."""
+    return {
+        "off_rating": float(stats.off_rating or 105.0),
+        "def_rating": float(stats.def_rating or 105.0),
+        "net_rating": float(stats.net_rating or 0.0),
+        "pace": float(stats.pace or 68.0),
+        "off_efg_pct": float(stats.off_efg_pct or 0.50),
+        "off_tov_pct": float(stats.off_tov_pct or 0.17),
+        "off_orb_pct": float(stats.off_orb_pct or 0.28),
+        "off_ft_rate": float(stats.off_ft_rate or 0.30),
+        "def_efg_pct": float(stats.def_efg_pct or 0.50),
+        "def_tov_pct": float(stats.def_tov_pct or 0.17),
+        "def_orb_pct": float(stats.def_orb_pct or 0.28),
+        "fg_pct": float(stats.fg_pct or 0.44),
+        "three_pt_pct": float(stats.three_pt_pct or 0.34),
+        "ft_pct": float(stats.ft_pct or 0.70),
+    }
+
+
+def _build_rolling_profile(
+    team_games: list[tuple[str, object]],
+    *,
+    before_date: str,
+    window: int,
+    min_games: int = 5,
+    sport: str = "mlb",
+) -> dict | None:
+    """Sport-aware rolling profile builder."""
+    if sport in ("nba", "ncaab", "nhl", "nfl"):
+        converter = {
+            "nba": _nba_stats_to_metrics,
+            "ncaab": _ncaab_stats_to_metrics,
+            "nhl": _nhl_stats_to_metrics,
+            "nfl": _nfl_stats_to_metrics,
+        }[sport]
+        prior = [stats for date_str, stats in team_games if date_str < before_date]
+        if len(prior) < min_games:
+            return None
+        recent = prior[-window:]
+        all_metrics = [converter(s) for s in recent]
+        aggregated: dict[str, float] = {}
+        for key in all_metrics[0]:
+            values = [m[key] for m in all_metrics if key in m]
+            if values:
+                aggregated[key] = round(sum(values) / len(values), 4)
+        return aggregated
+    return _build_rolling_profile_mlb(
+        team_games, before_date=before_date, window=window, min_games=min_games,
+    )
