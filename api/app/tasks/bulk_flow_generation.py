@@ -23,6 +23,10 @@ from ..db.mlb_advanced import (  # noqa: F401 — register model for relationshi
     MLBGameAdvancedStats,
     MLBPlayerAdvancedStats,
 )
+from ..db.nba_advanced import NBAGameAdvancedStats, NBAPlayerAdvancedStats  # noqa: F401
+from ..db.ncaab_advanced import NCAABGameAdvancedStats, NCAABPlayerAdvancedStats  # noqa: F401
+from ..db.nfl_advanced import NFLGameAdvancedStats, NFLPlayerAdvancedStats  # noqa: F401
+from ..db.nhl_advanced import NHLGameAdvancedStats, NHLGoalieAdvancedStats, NHLSkaterAdvancedStats  # noqa: F401
 from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relationship resolution
 from ..db.pipeline import BulkFlowGenerationJob
 from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution

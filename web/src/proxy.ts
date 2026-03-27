@@ -30,18 +30,18 @@ async function timingSafeCompare(a: string, b: string): Promise<boolean> {
 }
 
 /**
- * Basic auth proxy for production admin console.
+ * Basic auth for admin console — enforced in ALL environments.
  *
- * Requires ADMIN_PASSWORD env var to be set in production.
- * Username is "admin", password is the configured value.
+ * Requires ADMIN_PASSWORD env var. If not set, access is blocked
+ * with a 500 to prevent accidental unauthenticated exposure.
  */
 export async function proxy(request: NextRequest) {
   const adminPassword = process.env.ADMIN_PASSWORD;
-  const environment = process.env.ENVIRONMENT || process.env.NODE_ENV;
 
-  // Skip auth in development or if no password configured
-  if (environment === "development" || !adminPassword) {
-    return NextResponse.next();
+  if (!adminPassword) {
+    return new NextResponse("Server misconfigured: ADMIN_PASSWORD not set", {
+      status: 500,
+    });
   }
 
   const authHeader = request.headers.get("authorization");
@@ -69,7 +69,7 @@ export async function proxy(request: NextRequest) {
   // Fixed username "admin", password from env
   // Use constant-time comparison to prevent timing attacks
   const usernameMatch = username === "admin";
-  const passwordMatch = adminPassword ? await timingSafeCompare(password, adminPassword) : false;
+  const passwordMatch = await timingSafeCompare(password, adminPassword);
   
   if (usernameMatch && passwordMatch) {
     return NextResponse.next();
