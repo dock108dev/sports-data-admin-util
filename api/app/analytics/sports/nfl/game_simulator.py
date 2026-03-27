@@ -25,9 +25,6 @@ from app.analytics.sports.nfl.constants import (
     DEFAULT_DRIVE_PROBS_SUFFIXED as _DEFAULT_PROBS,
 )
 from app.analytics.sports.nfl.constants import (
-    DRIVE_OUTCOMES as _DRIVE_OUTCOMES,
-)
-from app.analytics.sports.nfl.constants import (
     DRIVES_PER_HALF as _DRIVES_PER_HALF,
 )
 from app.analytics.sports.nfl.constants import (

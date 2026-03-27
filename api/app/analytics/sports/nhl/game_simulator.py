@@ -187,8 +187,8 @@ class NHLGameSimulator:
 
         # OT — top-line only
         if home_score == away_score:
-            periods_played += 1
             for _ot in range(_MAX_OVERTIMES):
+                periods_played += 1
                 winner = _simulate_ot(
                     h_starter_w, a_starter_w, rng, home_events, away_events,
                 )
