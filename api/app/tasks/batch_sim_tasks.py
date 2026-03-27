@@ -109,9 +109,11 @@ async def _run_batch_sim(
                     job.status = "completed"
                     job.game_count = result.get("game_count")
                     job.results = result.get("results")
-                    # Save individual predictions for outcome tracking
+                    # Save predictions + immediately record outcomes for final games
                     await _save_prediction_outcomes(
-                        db, job_id, job.sport, job.probability_mode, result.get("results") or []
+                        db, job_id, job.sport, job.probability_mode,
+                        result.get("results") or [],
+                        games_by_id=result.get("_games_by_id"),
                     )
                 job.completed_at = datetime.now(UTC)
                 await db.commit()
@@ -120,6 +122,8 @@ async def _run_batch_sim(
         final_status = "error" if "error" in result else "success"
         await _complete_job_run(sf, run_id, final_status, summary_data=summary)
 
+    # Strip internal-only keys before returning (ORM objects aren't serializable)
+    result.pop("_games_by_id", None)
     return result
 
 
@@ -129,14 +133,22 @@ async def _save_prediction_outcomes(
     sport: str,
     probability_mode: str,
     results: list[dict],
+    games_by_id: dict | None = None,
 ) -> None:
-    """Persist per-game predictions from a batch sim for later outcome matching."""
+    """Persist per-game predictions; immediately record outcomes for final games.
+
+    If the game is already final (historical backtest), scores and
+    correct_winner are filled in right away rather than waiting for the
+    periodic ``record_completed_outcomes`` task.
+    """
+    from datetime import UTC, datetime
+
     from app.db.analytics import AnalyticsPredictionOutcome
 
     for game_result in results:
-        # Skip error-only entries from failed per-game simulations
         if "error" in game_result or "home_win_probability" not in game_result:
             continue
+
         outcome = AnalyticsPredictionOutcome(
             game_id=game_result["game_id"],
             sport=sport,
@@ -149,7 +161,6 @@ async def _save_prediction_outcomes(
             predicted_away_score=game_result.get("average_away_score"),
             probability_mode=probability_mode,
             game_date=game_result.get("game_date"),
-            # Sim observability columns for model-odds pipeline
             sim_wp_std_dev=game_result.get("home_wp_std_dev"),
             sim_iterations=game_result.get("iterations"),
             sim_score_std_home=game_result.get("score_std_home"),
@@ -159,6 +170,26 @@ async def _save_prediction_outcomes(
             sim_probability_source=game_result.get("probability_source"),
             feature_snapshot=game_result.get("feature_snapshot"),
         )
+
+        # Immediately record outcome if game is already final
+        game = games_by_id.get(game_result["game_id"]) if games_by_id else None
+        if (
+            game is not None
+            and game.status in ("final", "archived")
+            and game.home_score is not None
+            and game.away_score is not None
+        ):
+            home_win_actual = game.home_score > game.away_score
+            predicted_home_win = outcome.predicted_home_wp > 0.5
+            actual = 1.0 if home_win_actual else 0.0
+
+            outcome.actual_home_score = game.home_score
+            outcome.actual_away_score = game.away_score
+            outcome.home_win_actual = home_win_actual
+            outcome.correct_winner = predicted_home_win == home_win_actual
+            outcome.brier_score = round((outcome.predicted_home_wp - actual) ** 2, 6)
+            outcome.outcome_recorded_at = datetime.now(UTC)
+
         db.add(outcome)
 
 
@@ -860,9 +891,13 @@ async def _execute_batch_sim(
     # Build batch summary and sanity warnings
     batch_summary, batch_warnings = _build_batch_summary(sim_results)
 
+    # Build a game lookup so outcome recording can fill in scores immediately
+    games_lookup = {g.id: g for g in upcoming_games}
+
     result_payload: dict = {
         "game_count": len(sim_results),
         "results": sim_results,
+        "_games_by_id": games_lookup,
     }
     if batch_summary:
         result_payload["batch_summary"] = batch_summary

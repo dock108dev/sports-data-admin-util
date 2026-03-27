@@ -270,6 +270,14 @@ _scheduled_tasks = {
         "schedule": crontab(minute=0, hour=9),  # 4:00 AM EST = 09:00 UTC (+30 min after ingestion)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    # === Analytics: outcome recording + batch sims (noon–3 AM ET = 17–08 UTC) ===
+    # Runs every 30 min during active sports hours. Dispatches to the API
+    # worker's "celery" queue (same Redis broker, different Celery app).
+    "record-outcomes-every-30m": {
+        "task": "record_completed_outcomes",
+        "schedule": crontab(minute="0,30", hour="0-8,17-23"),
+        "options": {"queue": "celery", "routing_key": "celery", "expires": 1500},
+    },
 }
 
 # Social polling — game social collection every 30 min, mapping staggered at :15/:45
