@@ -613,24 +613,27 @@ async def _try_build_lineup_weights(
                 },
             )
 
-    # Bullpen profiles derived from opposing team's batting tendencies
-    away_bullpen = pitching_metrics_from_profile(away_profile) or fallback_pitcher
-    home_bullpen = pitching_metrics_from_profile(home_profile) or fallback_pitcher
+    # Bullpen profiles derived from the OPPOSING team's batting tendencies
+    # as a proxy for that team's pitching staff quality.
+    # Home batters face the away team's bullpen → derived from away profile.
+    # Away batters face the home team's bullpen → derived from home profile.
+    away_team_bullpen = pitching_metrics_from_profile(away_profile) or fallback_pitcher
+    home_team_bullpen = pitching_metrics_from_profile(home_profile) or fallback_pitcher
 
     # --- Build per-batter weights ---
-    # Home batters face away starter/bullpen
+    # Home batters face away starter + away team's bullpen
     home_weights = await build_lineup_weights(
         db, home_batters, game.home_team_id,
         opposing_starter_profile=away_sp_profile,
-        opposing_bullpen_profile=away_bullpen,
+        opposing_bullpen_profile=away_team_bullpen,
         team_profile=home_profile,
         rolling_window=rolling_window,
     )
-    # Away batters face home starter/bullpen
+    # Away batters face home starter + home team's bullpen
     away_weights = await build_lineup_weights(
         db, away_batters, game.away_team_id,
         opposing_starter_profile=home_sp_profile,
-        opposing_bullpen_profile=home_bullpen,
+        opposing_bullpen_profile=home_team_bullpen,
         team_profile=away_profile,
         rolling_window=rolling_window,
     )
