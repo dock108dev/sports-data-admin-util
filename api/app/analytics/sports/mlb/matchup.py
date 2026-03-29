@@ -96,7 +96,12 @@ class MLBMatchup:
 
         # Core probabilities
         contact_prob = _clamp(b_contact * (1.0 - p_contact_supp))
-        strikeout_prob = _clamp(b_whiff * p_k_rate / _BASELINE_WHIFF_RATE)
+        # Strikeout: odds-ratio method using batter whiff tendency and
+        # pitcher K rate, each expressed relative to their own baseline.
+        # This prevents double-counting when both are above average.
+        batter_k_factor = b_whiff / _BASELINE_WHIFF_RATE
+        pitcher_k_factor = p_k_rate / _BASELINE_STRIKEOUT_RATE
+        strikeout_prob = _clamp(_BASELINE_STRIKEOUT_RATE * batter_k_factor * pitcher_k_factor)
         # Walk rate: pitcher BB% is the baseline; adjust by how selective
         # the batter is relative to average.  A patient batter (low swing%)
         # walks more; a free-swinger walks less.
