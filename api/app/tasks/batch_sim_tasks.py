@@ -559,6 +559,18 @@ async def _try_build_lineup_weights(
             if home_ext:
                 home_sp_info = await fetch_probable_starter(game_date, home_ext)
 
+    logger.info(
+        "lineup_build_pitcher_lookup",
+        extra={
+            "game_id": game.id,
+            "is_final": is_final,
+            "home_sp_found": home_sp_info is not None,
+            "away_sp_found": away_sp_info is not None,
+            "home_sp_name": (home_sp_info or {}).get("name"),
+            "away_sp_name": (away_sp_info or {}).get("name"),
+        },
+    )
+
     # --- Get pitcher profiles ---
     away_sp_profile = fallback_pitcher
     home_sp_profile = fallback_pitcher
@@ -573,6 +585,15 @@ async def _try_build_lineup_weights(
         if raw:
             away_sp_avg_ip = away_sp_info.get("avg_ip")
             away_sp_profile = regress_pitcher_profile(raw, away_sp_avg_ip)
+        else:
+            logger.info(
+                "lineup_build_pitcher_profile_empty",
+                extra={
+                    "game_id": game.id,
+                    "side": "away",
+                    "pitcher_ref": away_sp_info["external_ref"],
+                },
+            )
 
     if home_sp_info:
         raw = await get_pitcher_rolling_profile(
@@ -582,6 +603,15 @@ async def _try_build_lineup_weights(
         if raw:
             home_sp_avg_ip = home_sp_info.get("avg_ip")
             home_sp_profile = regress_pitcher_profile(raw, home_sp_avg_ip)
+        else:
+            logger.info(
+                "lineup_build_pitcher_profile_empty",
+                extra={
+                    "game_id": game.id,
+                    "side": "home",
+                    "pitcher_ref": home_sp_info["external_ref"],
+                },
+            )
 
     # Bullpen profiles derived from opposing team's batting tendencies
     away_bullpen = pitching_metrics_from_profile(away_profile) or fallback_pitcher
@@ -804,12 +834,25 @@ async def _execute_batch_sim(
                         rolling_window,
                     )
         except Exception as exc:
-            logger.info(
-                "lineup_weight_build_skipped",
-                extra={"game_id": game.id, "error": str(exc)},
+            logger.warning(
+                "lineup_weight_build_exception",
+                extra={
+                    "game_id": game.id,
+                    "sport": sport_lower,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
             )
 
         if not lineup_mode:
+            logger.warning(
+                "lineup_mode_fallback",
+                extra={
+                    "game_id": game.id,
+                    "sport": sport_lower,
+                    "game_status": game.status,
+                },
+            )
             # Fall back to team-level probability resolution
             if has_profiles and use_ml:
                 game_context["profiles"] = {
