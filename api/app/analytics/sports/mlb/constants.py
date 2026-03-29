@@ -74,7 +74,7 @@ BARREL_HR_CONVERSION = 0.33
 # BABIP — batting average on balls in play.  ~30% of batted balls in
 # play become hits; the rest are fielded outs.  This is the critical
 # factor that converts "contact" into a realistic mix of hits vs outs.
-BASELINE_BABIP = 0.310
+BASELINE_BABIP = 0.315
 
 # Hit-type distribution fractions (of non-HR hits, i.e. balls in play
 # that fall for a hit).  Must sum to ~1.0.
