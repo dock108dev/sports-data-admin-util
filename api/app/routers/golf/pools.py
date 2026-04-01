@@ -349,7 +349,7 @@ async def submit_entry(
     entry = await create_entry_and_picks(pool, req.email, req.entry_name, req.picks, player_names, db)
 
     picks_response = [
-        {"dg_id": pk.dg_id, "pick_slot": pk.pick_slot, "player_name": player_names.get(pk.dg_id, pk.player_name or f"Player {pk.dg_id}")}
+        {"pick_slot": pk.pick_slot, "player_name": player_names.get(pk.dg_id, pk.player_name or f"Player {pk.dg_id}")}
         for pk in req.picks
     ]
 
@@ -389,9 +389,16 @@ async def get_entries_by_email(
             )
         )
         picks = picks_result.scalars().all()
-        entry_dict = serialize_entry(entry)
-        entry_dict["picks"] = [serialize_pick(pk) for pk in picks]
-        entries_data.append(entry_dict)
+        entries_data.append({
+            "id": entry.id,
+            "pool_id": entry.pool_id,
+            "email": entry.email,
+            "entry_name": entry.entry_name,
+            "picks": [
+                {"pick_slot": pk.pick_slot, "player_name": pk.player_name_snapshot}
+                for pk in picks
+            ],
+        })
 
     return {"entries": entries_data, "count": len(entries_data)}
 
