@@ -40,7 +40,7 @@ _NCAAB_TEAM_DATA: list[tuple[str, str, int]] = [
     ("Binghamton Bearcats", "BING", 24),
     ("Boise State Broncos", "BSU", 25),
     ("Boston College Eagles", "BC", 26),
-    ("Boston Univ. Terriers", "BU", 27),
+    ("Boston University", "BU", 27),
     ("Bowling Green Falcons", "BGSU", 28),
     ("Bradley Braves", "BRAD", 29),
     ("Brown Bears", "BRWN", 30),
@@ -295,7 +295,7 @@ _NCAAB_TEAM_DATA: list[tuple[str, str, int]] = [
     ("St. Bonaventure Bonnies", "SBU", 277),
     ("St. Francis (PA) Red Flash", "SFPA", 278),
     ("St. John's Red Storm", "SJN", 279),
-    ("St. Thomas (MN) Tommies", "STMN", 280),
+    ("St. Thomas-Minnesota", "STMN", 280),
     ("Stanford Cardinal", "STAN", 281),
     ("Stephen F. Austin Lumberjacks", "SFA", 282),
     ("Stetson Hatters", "STET", 283),
@@ -617,8 +617,10 @@ def _build_variations() -> None:
         # abbreviated state prefixes (Fla., N., S., W., E.) and drops mascots.
         # Multi-word mascots (Mean Green, Tar Heels, Golden Eagles, etc.)
         # break rsplit-based stripping, so explicit mappings are required.
-        "Boston U.": "Boston Univ. Terriers",
-        "Boston U": "Boston Univ. Terriers",
+        "Boston U.": "Boston University",
+        "Boston U": "Boston University",
+        "Boston Univ. Terriers": "Boston University",
+        "Boston Univ.": "Boston University",
         "Northern Ky.": "Northern Kentucky Norse",
         "Northern Ky": "Northern Kentucky Norse",
         # Florida -> Fla.
@@ -702,7 +704,8 @@ def _build_variations() -> None:
         "Saint Francis Pennsylvania": "St. Francis (PA) Red Flash",
         "St. Francis Pennsylvania": "St. Francis (PA) Red Flash",
         "St. Francis (PA)": "St. Francis (PA) Red Flash",
-        "St. Thomas (MN)": "St. Thomas (MN) Tommies",
+        "St. Thomas (MN)": "St. Thomas-Minnesota",
+        "St. Thomas (MN) Tommies": "St. Thomas-Minnesota",
         "Prairie View": "Prairie View Panthers",
         "Alcorn": "Alcorn St Braves",
         "UNI": "Northern Iowa Panthers",

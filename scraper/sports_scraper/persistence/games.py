@@ -79,11 +79,30 @@ def _cache_delete(key: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _has_real_time(game_date) -> bool:
+    """Return True if game_date carries a meaningful tip time (not a
+    midnight-ET placeholder created from a date-only source)."""
+    from datetime import date as _date_type
+    if isinstance(game_date, _date_type) and not isinstance(game_date, datetime):
+        return False  # bare date — no time info
+    # Check if it's midnight ET (placeholder from date_to_utc_datetime)
+    et_day = to_et_date(game_date)
+    return game_date != start_of_et_day_utc(et_day)
+
+
+def _to_datetime(game_date) -> datetime:
+    """Coerce a date or datetime to a timezone-aware UTC datetime for storage."""
+    from datetime import date as _date_type
+    if isinstance(game_date, _date_type) and not isinstance(game_date, datetime):
+        return start_of_et_day_utc(game_date)
+    return game_date
+
+
 def find_or_create_game(
     session: Session,
     *,
     league_code: str,
-    game_date: datetime,
+    game_date: datetime,  # accepts date or datetime
     home_team: TeamIdentity,
     away_team: TeamIdentity,
     status: str | None = None,
@@ -116,7 +135,9 @@ def find_or_create_game(
     home_team_id = _upsert_team(session, league_id, home_team)
     away_team_id = _upsert_team(session, league_id, away_team)
 
-    game_date_only = to_et_date(game_date)
+    # Coerce date → datetime for DB operations; keep original for _enrich checks
+    game_date_dt = _to_datetime(game_date)
+    game_date_only = to_et_date(game_date_dt)
     day_start = start_of_et_day_utc(game_date_only)
     day_end = end_of_et_day_utc(game_date_only)
 
@@ -224,7 +245,7 @@ def find_or_create_game(
         league_id=league_id,
         season=season,
         season_type=season_type,
-        game_date=game_date,
+        game_date=game_date_dt,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         home_score=home_score,
@@ -295,11 +316,12 @@ def _enrich_existing(
             game.external_ids = merged
             updated = True
 
-    # Backfill game_date if existing is midnight placeholder
-    existing_is_midnight = game.game_date == start_of_et_day_utc(to_et_date(game.game_date))
-    incoming_is_midnight = game_date == start_of_et_day_utc(to_et_date(game_date))
-    if existing_is_midnight and not incoming_is_midnight:
-        game.game_date = game_date
+    # Only update game_date when the incoming value carries a REAL time
+    # (e.g., from a schedule API or odds commence_time). Date-only sources
+    # (Basketball Reference, boxscore ingestion) should never overwrite a
+    # real datetime with a midnight placeholder.
+    if _has_real_time(game_date) and not _has_real_time(game.game_date):
+        game.game_date = _to_datetime(game_date)
         updated = True
 
     # Season type

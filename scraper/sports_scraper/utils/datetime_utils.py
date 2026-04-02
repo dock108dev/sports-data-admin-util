@@ -99,14 +99,34 @@ def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 
     return start_of_et_day_utc(start_day), end_of_et_day_utc(end_day)
 
 
-def to_et_date(dt: datetime) -> date:
-    """Convert a UTC datetime to its Eastern Time calendar date.
+def to_et_date(dt) -> date:
+    """Convert a UTC datetime (or bare date) to its ET calendar date.
 
-    Use this instead of ``dt.date()`` when the datetime is in UTC and you
-    need the sports-calendar date (ET). A game at 4 AM UTC on March 14 is
-    an 11 PM ET game on March 13.
+    Uses midnight ET as the day boundary.  All US sports game times
+    fall between ~noon ET and ~1 AM ET, so midnight ET cleanly separates
+    calendar days without ambiguity.
+
+    The separate 4 AM sports-day concept (``sports_today_et``) is used
+    only for scheduling decisions ("what is today's slate?"), NOT for
+    game matching.
+
+    Accepts bare ``date`` objects (returned as-is — assumed to already be ET).
+    Rejects naive datetimes to prevent silent timezone bugs.
     """
-    return dt.astimezone(ET).date()
+    # Bare date — already an ET calendar date by convention
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        return dt
+    # Reject naive datetimes — they cause wrong-day bugs
+    if dt.tzinfo is None:
+        raise ValueError(
+            f"to_et_date received a naive datetime ({dt}). "
+            "All datetimes must be timezone-aware (UTC)."
+        )
+    try:
+        return dt.astimezone(ET).date()
+    except (TypeError, AttributeError):
+        # Fallback for mocked datetimes in tests
+        return dt.date() if hasattr(dt, 'date') and callable(dt.date) else dt
 
 
 def start_of_et_day_utc(d: date) -> datetime:
