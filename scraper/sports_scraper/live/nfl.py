@@ -116,7 +116,10 @@ class NFLLiveFeedClient:
 
             # Game date
             game_date_str = event.get("date")
-            game_date = parse_espn_datetime(game_date_str) if game_date_str else _et_noon_utc(target_date)
+            if not game_date_str:
+                logger.warning("nfl_missing_game_date", event_id=event.get("id"))
+                continue
+            game_date = parse_espn_datetime(game_date_str)
 
             # Season type — skip preseason by default
             season_data = event.get("season", {})

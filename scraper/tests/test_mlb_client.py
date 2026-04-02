@@ -202,10 +202,10 @@ class TestMLBLiveFeedClientSchedule:
     @patch("sports_scraper.live.mlb.APICache")
     @patch("sports_scraper.live.mlb.httpx.Client")
     @patch("sports_scraper.live.mlb.settings")
-    def test_parse_schedule_no_game_date_falls_back_to_target_date(
+    def test_parse_schedule_no_game_date_skips_game(
         self, mock_settings, MockHttpClient, MockCache, MockBox, MockPbp, MockStatcast
     ):
-        """When gameDate is missing, fall back to the target date."""
+        """When gameDate is missing, skip the game instead of using a placeholder."""
         mock_settings.scraper_config.request_timeout_seconds = 30
         mock_settings.scraper_config.html_cache_dir = "/tmp/test_cache"
 
@@ -219,7 +219,7 @@ class TestMLBLiveFeedClientSchedule:
                     "games": [
                         {
                             "gamePk": 99999,
-                            # No gameDate — should fall back
+                            # No gameDate — should be skipped
                             "status": {"abstractGameState": "Preview"},
                             "teams": {
                                 "home": {
@@ -243,8 +243,7 @@ class TestMLBLiveFeedClientSchedule:
             ]
         }
         result = client._parse_schedule_response(payload, date(2025, 6, 1))
-        assert len(result) == 1
-        assert result[0].game_pk == 99999
+        assert len(result) == 0
 
 
 class TestMLBLiveFeedClientDelegation:

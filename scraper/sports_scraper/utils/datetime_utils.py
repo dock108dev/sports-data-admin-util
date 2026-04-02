@@ -54,8 +54,17 @@ def today_et() -> date:
 
 
 def date_to_utc_datetime(day: date) -> datetime:
-    """Convert a date to a timezone-aware UTC datetime at midnight."""
-    return datetime.combine(day, datetime.min.time()).replace(tzinfo=UTC)
+    """Convert a sports-calendar date to a UTC datetime.
+
+    Uses midnight **Eastern Time** (not midnight UTC) because US sports
+    dates refer to the ET calendar day.  E.g. a game on "March 22" means
+    March 22 ET, which is ``2026-03-22T04:00:00Z`` (EDT) or
+    ``2026-03-22T05:00:00Z`` (EST), not ``2026-03-22T00:00:00Z``.
+
+    This ensures all game timestamps created from date-only sources land
+    on the correct ET calendar day for matching in ``find_or_create_game``.
+    """
+    return start_of_et_day_utc(day)
 
 
 def cap_social_date_range(start: date, end: date) -> tuple[date, date]:

@@ -123,13 +123,11 @@ class MLBLiveFeedClient:
                 status_code = status_data.get("statusCode", "")
                 status = map_mlb_game_state(abstract_state or status_code)
 
-                # Use actual game datetime from API when available (needed for
-                # doubleheader disambiguation), fall back to date-only.
                 game_date_str = game_data.get("gameDate")
-                if game_date_str:
-                    game_date = parse_datetime(game_date_str)
-                else:
-                    game_date = start_of_et_day_utc(target_date)
+                if not game_date_str:
+                    logger.warning("mlb_missing_game_date", game_pk=game_data.get("gamePk"))
+                    continue
+                game_date = parse_datetime(game_date_str)
 
                 # Extract team info
                 teams = game_data.get("teams", {})

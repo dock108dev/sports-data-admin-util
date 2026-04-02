@@ -9,7 +9,7 @@ This module provides the main NHLLiveFeedClient which composes:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -136,9 +136,17 @@ class NHLLiveFeedClient:
                 status = map_nhl_game_state(game_state)
                 status_text = game.get("gameScheduleState")
 
-                # Store ET noon so to_et_date() returns the correct schedule
-                # date. Using UTC midnight would convert to the previous ET day.
-                game_date = _et_noon_utc(target_date)
+                # Use actual start time from API when available
+                start_time_str = game.get("startTimeUTC")
+                if start_time_str:
+                    try:
+                        game_date = datetime.fromisoformat(
+                            start_time_str.replace("Z", "+00:00")
+                        ).astimezone(UTC)
+                    except (ValueError, TypeError):
+                        game_date = _et_noon_utc(target_date)
+                else:
+                    game_date = _et_noon_utc(target_date)
 
                 # Extract team info
                 home_team_data = game.get("homeTeam", {})

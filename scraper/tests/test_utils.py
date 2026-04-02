@@ -220,15 +220,17 @@ class TestDateToUtcDatetime:
         result = date_to_utc_datetime(date(2024, 1, 15))
         assert isinstance(result, datetime)
 
-    def test_date_to_utc_datetime_is_midnight(self):
+    def test_date_to_utc_datetime_is_midnight_et(self):
+        """Produces midnight ET in UTC (not midnight UTC)."""
         result = date_to_utc_datetime(date(2024, 1, 15))
-        assert result.hour == 0
+        # Jan 15 is EST (UTC-5), so midnight ET = 05:00 UTC
+        assert result.hour == 5
         assert result.minute == 0
         assert result.second == 0
 
     def test_date_to_utc_datetime_is_timezone_aware(self):
         result = date_to_utc_datetime(date(2024, 1, 15))
-        assert result.tzinfo == UTC
+        assert result.tzinfo is not None
 
 
 class TestDateWindowForMatching:

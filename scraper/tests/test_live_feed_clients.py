@@ -960,8 +960,8 @@ class TestMLBParseScheduleResponse:
         assert games[0].game_date.hour == 17
         assert games[0].game_date.minute == 10
 
-    def test_falls_back_to_target_date_when_no_game_date(self):
-        """Falls back to midnight ET on target_date when gameDate is absent."""
+    def test_skips_game_when_no_game_date(self):
+        """Skips game when gameDate is absent rather than using a placeholder."""
         client = self._make_client()
         payload = {
             "dates": [
@@ -974,10 +974,7 @@ class TestMLBParseScheduleResponse:
         }
         games = client._parse_schedule_response(payload, date(2025, 7, 4))
 
-        assert len(games) == 1
-        # Midnight ET on July 4 = 4 AM UTC (EDT)
-        assert games[0].game_date.hour == 4
-        assert games[0].game_date.minute == 0
+        assert len(games) == 0
 
     def test_doubleheader_produces_two_games(self):
         """Two games for same teams on same date are both returned."""

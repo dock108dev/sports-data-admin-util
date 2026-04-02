@@ -215,9 +215,11 @@ class NCAABLiveFeedClient:
             try:
                 game_date = datetime.fromisoformat(date_str.replace("Z", "+00:00")).astimezone(UTC)
             except ValueError:
-                game_date = datetime.now(UTC)
+                logger.warning("ncaab_bad_start_date", raw=date_str)
+                return None
         else:
-            game_date = datetime.now(UTC)
+            logger.warning("ncaab_missing_start_date", game=game.get("id"))
+            return None
 
         # Team IDs are at root level, not nested
         home_team_id = game.get("homeTeamId") or 0
