@@ -249,6 +249,28 @@ def sync_leaderboard() -> dict:
                     "db_event": db_event,
                 }
 
+        # Clear stale leaderboard rows from a previous tournament that
+        # may have been written to this tournament_id.  This happens when
+        # the event_name guard is skipped (DataGolf returns empty metadata
+        # during event transitions).  Delete any rows whose dg_id is NOT
+        # in the current API response.
+        current_dg_ids = {e.dg_id for e in primary}
+        if current_dg_ids:
+            stale = session.execute(
+                text("""
+                    DELETE FROM golf_leaderboard
+                    WHERE tournament_id = :tid
+                      AND dg_id != ALL(:ids)
+                """),
+                {"tid": tournament_id, "ids": list(current_dg_ids)},
+            )
+            if stale.rowcount:
+                logger.info(
+                    "golf_leaderboard_stale_cleared",
+                    tournament_id=tournament_id,
+                    stale_removed=stale.rowcount,
+                )
+
         lb_dicts = []
         for e in primary:
             sg = sg_by_id.get(e.dg_id)
