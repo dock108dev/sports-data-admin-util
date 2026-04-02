@@ -194,21 +194,25 @@ def poll_live_pbp_task() -> dict:
                     try:
                         populate_nba_game_ids(session, start_date=start, end_date=end)
                     except Exception as exc:
+                        session.rollback()
                         logger.warning("poll_populate_nba_ids_error", error=str(exc))
 
                     try:
                         populate_nhl_game_ids(session, start_date=start, end_date=end)
                     except Exception as exc:
+                        session.rollback()
                         logger.warning("poll_populate_nhl_ids_error", error=str(exc))
 
                     try:
                         populate_mlb_game_ids(session, start_date=start, end_date=end)
                     except Exception as exc:
+                        session.rollback()
                         logger.warning("poll_populate_mlb_ids_error", error=str(exc))
 
                     try:
                         populate_ncaab_game_ids(session, start_date=start, end_date=end)
                     except Exception as exc:
+                        session.rollback()
                         logger.warning("poll_populate_ncaab_ids_error", error=str(exc))
 
                     # Refresh game objects to pick up newly-set external_ids
@@ -264,6 +268,7 @@ def poll_live_pbp_task() -> dict:
                     time.sleep(_RATE_LIMIT_BACKOFF_SECONDS)
 
                 except Exception as exc:
+                    session.rollback()
                     logger.warning(
                         "poll_live_pbp_game_error",
                         game_id=game.id,
@@ -334,6 +339,7 @@ def poll_live_pbp_task() -> dict:
                         time.sleep(_RATE_LIMIT_BACKOFF_SECONDS)
 
                     except Exception as exc:
+                        session.rollback()
                         logger.warning(
                             "poll_boxscore_game_error",
                             game_id=game.id,
@@ -360,6 +366,7 @@ def poll_live_pbp_task() -> dict:
                     logger.warning("poll_ncaab_rate_limited")
                     rate_limited = True
                 except Exception as exc:
+                    session.rollback()
                     logger.warning("poll_ncaab_batch_error", error=str(exc))
 
             total_api_calls = api_calls + boxscore_calls
