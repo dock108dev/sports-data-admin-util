@@ -5,18 +5,16 @@ Handles odds matching to games and persistence, including NCAAB-specific name ma
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from enum import Enum
 
-from sqlalchemy import alias, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
-from ..utils.datetime_utils import now_utc, start_of_et_day_utc, to_et_date
-from ..utils.db_queries import get_league_id
+from ..utils.datetime_utils import now_utc, to_et_date
 
 
 class OddsUpsertResult(Enum):
@@ -28,17 +26,7 @@ class OddsUpsertResult(Enum):
 
 
 from ..odds.fairbet import upsert_fairbet_odds  # noqa: E402
-from .games import upsert_game_stub  # noqa: E402
-from .odds_matching import (  # noqa: E402
-    cache_get,
-    cache_set,
-    canonicalize_team_names,
-    match_game_by_names_ncaab,
-    match_game_by_names_non_ncaab,
-    match_game_by_team_ids,
-    should_log,
-)
-from .teams import _find_team_by_name, _upsert_team  # noqa: E402
+from .games import find_or_create_game  # noqa: E402
 
 
 def _execute_odds_upsert(
@@ -101,362 +89,63 @@ def _execute_odds_upsert(
 
 
 def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpsertResult:
-    """Upsert odds snapshot, matching to existing game.
+    """Upsert odds snapshot, matching to an existing game or creating one.
 
-    Tries multiple matching strategies:
-    1. Match by team IDs (exact and swapped)
-    2. Match by team names (NCAAB uses normalized matching, others use exact)
+    Uses ``find_or_create_game()`` for all game resolution — the same
+    function used by boxscores, PBP, schedule feeds, and live feeds.
+
+    For historical dates, ``create_if_missing=False`` so we never create
+    stub games for past matchups (the game should already exist from
+    boxscore ingestion).  For today/future, stubs are created so odds
+    are captured before the game appears in schedule feeds.
 
     Returns:
         PERSISTED — odds were written to the database.
-        SKIPPED_NO_MATCH — no matching game found (or far-future / stub failure).
+        SKIPPED_NO_MATCH — no matching game found.
         SKIPPED_LIVE — game is live; write skipped to preserve closing lines.
     """
-    league_id = get_league_id(session, snapshot.league_code)
+    game_date_only = to_et_date(snapshot.game_date)
+    today = date.today()
+    is_historical = game_date_only < today
 
-    home_team_id = _find_team_by_name(
-        session, league_id, snapshot.home_team.name, snapshot.home_team.abbreviation
-    )
-    if home_team_id is None:
-        logger.debug(
-            "odds_team_not_found_creating",
-            team_name=snapshot.home_team.name,
-            abbreviation=snapshot.home_team.abbreviation,
-            league=snapshot.league_code,
-        )
-        home_team_id = _upsert_team(session, league_id, snapshot.home_team)
-    else:
-        if should_log(f"odds_team_found:{home_team_id}", sample=200):
-            logger.debug(
-                "odds_team_found",
-                team_name=snapshot.home_team.name,
-                team_id=home_team_id,
-                league=snapshot.league_code,
-            )
+    # Guard: reject far-future games (>48h out)
+    max_future = today + timedelta(days=2)
+    if game_date_only > max_future:
+        return OddsUpsertResult.SKIPPED_NO_MATCH
 
-    away_team_id = _find_team_by_name(
-        session, league_id, snapshot.away_team.name, snapshot.away_team.abbreviation
-    )
-    if away_team_id is None:
-        logger.debug(
-            "odds_team_not_found_creating",
-            team_name=snapshot.away_team.name,
-            abbreviation=snapshot.away_team.abbreviation,
-            league=snapshot.league_code,
-        )
-        away_team_id = _upsert_team(session, league_id, snapshot.away_team)
-    else:
-        if should_log(f"odds_team_found:{away_team_id}", sample=200):
-            logger.debug(
-                "odds_team_found",
-                team_name=snapshot.away_team.name,
-                team_id=away_team_id,
-                league=snapshot.league_code,
-            )
+    # Build external_ids from snapshot
+    external_ids = {}
+    if snapshot.source_key:
+        external_ids["odds_api_event_id"] = snapshot.source_key
+    if snapshot.event_id:
+        external_ids["odds_api_event_id"] = snapshot.event_id
 
-    game_day = to_et_date(snapshot.game_date)
-    cache_key = (
-        snapshot.league_code,
-        game_day,
-        min(home_team_id, away_team_id),
-        max(home_team_id, away_team_id),
-    )
-    cached = cache_get(cache_key)
-    if cached is not False:
-        game_id = cached  # type: ignore[assignment]
-        if game_id is None:
-            return OddsUpsertResult.SKIPPED_NO_MATCH
-
-        game = session.get(db_models.SportsGame, game_id)
-
-        # Skip live games to preserve pre-game closing lines
-        if game and game.status == db_models.GameStatus.live.value:
-            logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
-            return OddsUpsertResult.SKIPPED_LIVE
-
-        # Store odds_api_event_id for downstream prop fetching (cached path)
-        if game and snapshot.event_id:
-            ext = dict(game.external_ids) if game.external_ids else {}
-            if ext.get("odds_api_event_id") != snapshot.event_id:
-                ext["odds_api_event_id"] = snapshot.event_id
-                game.external_ids = ext
-
-        side_value = snapshot.side if snapshot.side else None
-        _execute_odds_upsert(session, game_id, snapshot, side_value)
-
-        # FairBet work table: append odds for non-completed games (cached path)
-        if game is not None:
-            upsert_fairbet_odds(session, game_id, game.status, snapshot)
-            game.last_odds_at = now_utc()
-
-        return OddsUpsertResult.PERSISTED
-    day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
-    day_end = datetime.combine(game_day + timedelta(days=1), datetime.max.time(), tzinfo=UTC)
-
-    if should_log("odds_matching_start"):
-        logger.debug(
-            "odds_matching_start",
-            league=snapshot.league_code,
-            home_team_name=snapshot.home_team.name,
-            home_team_id=home_team_id,
-            away_team_name=snapshot.away_team.name,
-            away_team_id=away_team_id,
-            game_date=str(game_day),
-            game_datetime=str(snapshot.game_date),
-            day_start=str(day_start),
-            day_end=str(day_end),
-        )
-
-    home_canonical, away_canonical = canonicalize_team_names(snapshot)
-
-    all_games_check = (
-        select(
-            db_models.SportsGame.id,
-            db_models.SportsGame.game_date,
-            db_models.SportsGame.home_team_id,
-            db_models.SportsGame.away_team_id,
-        )
-        .where(db_models.SportsGame.league_id == league_id)
-        .where(db_models.SportsGame.game_date >= day_start)
-        .where(db_models.SportsGame.game_date <= day_end)
-        .limit(10)
-    )
-    all_games = session.execute(all_games_check).all()
-
-    diagnostic_games = []
-    if all_games:
-        team_ids = set()
-        for game in all_games:
-            team_ids.add(game[2])
-            team_ids.add(game[3])
-
-        teams_stmt = select(db_models.SportsTeam.id, db_models.SportsTeam.name).where(
-            db_models.SportsTeam.id.in_(team_ids)
-        )
-        teams_map = {row[0]: row[1] for row in session.execute(teams_stmt).all()}
-
-        diagnostic_games = [
-            {
-                "id": game[0],
-                "date": str(game[1]),
-                "home_id": game[2],
-                "away_id": game[3],
-                "home_name": teams_map.get(game[2], "unknown"),
-                "away_name": teams_map.get(game[3], "unknown"),
-            }
-            for game in all_games
-        ]
-
-    if should_log("odds_diagnostic_all_games"):
-        logger.debug(
-            "odds_diagnostic_all_games",
-            league=snapshot.league_code,
-            game_date=str(game_day),
-            day_start=str(day_start),
-            day_end=str(day_end),
-            total_games_count=len(all_games),
-            diagnostic_games=diagnostic_games[:3],
-            searching_for_home=snapshot.home_team.name,
-            searching_for_away=snapshot.away_team.name,
-        )
-
-    home_team_alias = alias(db_models.SportsTeam)
-    away_team_alias = alias(db_models.SportsTeam)
-
-    games_check = (
-        select(
-            db_models.SportsGame.id,
-            db_models.SportsGame.game_date,
-            db_models.SportsGame.home_team_id,
-            db_models.SportsGame.away_team_id,
-        )
-        .join(home_team_alias, db_models.SportsGame.home_team_id == home_team_alias.c.id)
-        .join(away_team_alias, db_models.SportsGame.away_team_id == away_team_alias.c.id)
-        .where(db_models.SportsGame.league_id == league_id)
-        .where(db_models.SportsGame.game_date >= day_start)
-        .where(db_models.SportsGame.game_date <= day_end)
-        .where(
-            or_(
-                db_models.SportsGame.home_team_id == home_team_id,
-                db_models.SportsGame.away_team_id == home_team_id,
-                db_models.SportsGame.home_team_id == away_team_id,
-                db_models.SportsGame.away_team_id == away_team_id,
-                func.lower(home_team_alias.c.name) == func.lower(snapshot.home_team.name),
-                func.lower(home_team_alias.c.name) == func.lower(home_canonical),
-                func.lower(away_team_alias.c.name) == func.lower(snapshot.away_team.name),
-                func.lower(away_team_alias.c.name) == func.lower(away_canonical),
-                func.lower(home_team_alias.c.name) == func.lower(snapshot.away_team.name),
-                func.lower(home_team_alias.c.name) == func.lower(away_canonical),
-                func.lower(away_team_alias.c.name) == func.lower(snapshot.home_team.name),
-                func.lower(away_team_alias.c.name) == func.lower(home_canonical),
-            )
-        )
-        .limit(20)
-    )
-    potential_games = session.execute(games_check).all()
-
-    if should_log("odds_potential_games_found"):
-        logger.debug(
-            "odds_potential_games_found",
-            league=snapshot.league_code,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            potential_games_count=len(potential_games),
-            potential_games=[
-                {
-                    "id": game[0],
-                    "date": str(game[1]),
-                    "home_id": game[2],
-                    "away_id": game[3],
-                }
-                for game in potential_games[:5]
-            ],
-        )
-
-    game_id = match_game_by_team_ids(
-        session, league_id, home_team_id, away_team_id, day_start, day_end
-    )
-
-    logger.debug(
-        "odds_exact_match_attempt",
-        league=snapshot.league_code,
-        home_team_id=home_team_id,
-        away_team_id=away_team_id,
-        game_id=game_id,
-        matched=game_id is not None,
+    game_id, created = find_or_create_game(
+        session,
+        league_code=snapshot.league_code,
+        game_date=snapshot.game_date,
+        home_team=snapshot.home_team,
+        away_team=snapshot.away_team,
+        external_ids=external_ids or None,
+        create_if_missing=not is_historical,  # Never stub historical games
     )
 
     if game_id is None:
-        if snapshot.league_code == "NCAAB":
-            game_id = match_game_by_names_ncaab(
-                session, league_id, snapshot, home_canonical, away_canonical, day_start, day_end
-            )
-        else:
-            game_id = match_game_by_names_non_ncaab(
-                session, league_id, snapshot, home_canonical, away_canonical, day_start, day_end
-            )
-
-    if game_id is None:
-        game_date_only = to_et_date(snapshot.game_date)
-        today = date.today()
-        is_historical = game_date_only < today
-
-        # Historical games: NEVER create stubs. The game should already
-        # exist from boxscore/schedule ingestion. If matching failed, skip
-        # the odds record rather than creating a duplicate game.
-        # This prevents the duplicate-game problem that occurs when odds
-        # come back after a quota blackout.
-        if is_historical:
-            if should_log(f"odds_skip_historical_unmatched:{snapshot.league_code}"):
-                logger.warning(
-                    "odds_skip_historical_unmatched",
-                    league=snapshot.league_code,
-                    game_date=str(game_date_only),
-                    home_team=snapshot.home_team.name,
-                    away_team=snapshot.away_team.name,
-                    home_team_id=home_team_id,
-                    away_team_id=away_team_id,
-                )
-            cache_set(cache_key, None)
-            return OddsUpsertResult.SKIPPED_NO_MATCH
-
-        # Guard: reject game stubs more than 48 hours in the future.
-        # The Odds API sometimes returns events outside the requested
-        # commenceTimeTo window.
-        max_future = today + timedelta(days=2)
-        if game_date_only > max_future:
-            logger.debug(
-                "odds_skip_far_future_game",
-                league=snapshot.league_code,
-                game_date=str(game_date_only),
-                home_team=snapshot.home_team.name,
-                away_team=snapshot.away_team.name,
-            )
-            cache_set(cache_key, None)
-            return OddsUpsertResult.SKIPPED_NO_MATCH
-
-        # Future/today games: create a stub so odds are captured before
-        # the game appears in schedule ingestion.
-        external_ids = {}
-        if snapshot.source_key:
-            external_ids["odds_api_event_id"] = snapshot.source_key
-
-        try:
-            game_id, created = upsert_game_stub(
-                session,
-                league_code=snapshot.league_code,
-                game_date=snapshot.game_date,
-                home_team=snapshot.home_team,
-                away_team=snapshot.away_team,
-                status="scheduled",
-                external_ids=external_ids if external_ids else None,
-            )
-        except Exception as exc:
-            logger.error(
-                "odds_game_stub_failed",
-                league=snapshot.league_code,
-                home_team=snapshot.home_team.name,
-                away_team=snapshot.away_team.name,
-                game_date=str(game_date_only),
-                is_historical=is_historical,
-                error=str(exc),
-                exc_info=True,
-            )
-            cache_set(cache_key, None)
-            return OddsUpsertResult.SKIPPED_NO_MATCH
-
-        logger.info(
-            "odds_created_game_stub",
-            league=snapshot.league_code,
-            game_id=game_id,
-            created=created,
-            home_team=snapshot.home_team.name,
-            away_team=snapshot.away_team.name,
-            game_date=str(game_date_only),
-            is_historical=is_historical,
-        )
-
-        # Cache the newly created game_id for subsequent odds records
-        cache_set(cache_key, game_id)
+        return OddsUpsertResult.SKIPPED_NO_MATCH
 
     game = session.get(db_models.SportsGame, game_id)
 
-    # Backfill game_date if existing is midnight ET placeholder and odds has real time
-    if game is not None:
-        existing_is_midnight = game.game_date == start_of_et_day_utc(to_et_date(game.game_date))
-        incoming_is_midnight = snapshot.game_date == start_of_et_day_utc(to_et_date(snapshot.game_date))
-        if existing_is_midnight and not incoming_is_midnight:
-            old_date = game.game_date
-            game.game_date = snapshot.game_date
-            game.updated_at = now_utc()
-            logger.info(
-                "odds_backfilled_game_date",
-                game_id=game_id,
-                old_date=str(old_date),
-                new_date=str(snapshot.game_date),
-            )
-
     # Skip live games to preserve pre-game closing lines
     if game and game.status == db_models.GameStatus.live.value:
-        logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
-        cache_set(cache_key, game_id)
         return OddsUpsertResult.SKIPPED_LIVE
 
-    # Store odds_api_event_id for downstream prop fetching
-    if game and snapshot.event_id:
-        ext = dict(game.external_ids) if game.external_ids else {}
-        if ext.get("odds_api_event_id") != snapshot.event_id:
-            ext["odds_api_event_id"] = snapshot.event_id
-            game.external_ids = ext
-
+    # Write odds records
     side_value = snapshot.side if snapshot.side else None
     _execute_odds_upsert(session, game_id, snapshot, side_value)
 
-    # FairBet work table: append odds for non-completed games
-    # This enables cross-book comparison in FairBet
+    # FairBet work table
     if game is not None:
         upsert_fairbet_odds(session, game_id, game.status, snapshot)
         game.last_odds_at = now_utc()
 
-    cache_set(cache_key, game_id)
     return OddsUpsertResult.PERSISTED

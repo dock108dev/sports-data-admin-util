@@ -456,692 +456,159 @@ class TestMatchGameByNamesNonNcaab:
         assert result == 42
 
 
+# ==========================================================================
+# upsert_odds tests — now delegates to find_or_create_game
+# ==========================================================================
+
+
+def _make_snapshot(**overrides):
+    defaults = dict(
+        league_code="NBA",
+        home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
+        away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
+        game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
+        book="draftkings",
+        market_type="moneyline",
+        price=-110,
+        observed_at=datetime.now(UTC),
+    )
+    defaults.update(overrides)
+    return NormalizedOddsSnapshot(**defaults)
+
+
+
 class TestUpsertOddsFunction:
-    """Tests for upsert_odds function."""
+    """Tests for upsert_odds — delegates game resolution to find_or_create_game."""
 
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_uses_cache_hit(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Uses cached game_id when available."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_persists_odds_when_game_found(self, mock_find):
         from sports_scraper.persistence.odds import upsert_odds
 
+        mock_find.return_value = (42, False)
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]  # home, away team IDs
-        mock_cache_get.return_value = 42  # Cached game_id
-
-        # Mock session.get to return a game and its teams
         mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game)
+        mock_game.status = "scheduled"
+        mock_session.get.return_value = mock_game
 
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        # Three execute calls: SportsGameOdds opening + closing + FairbetGameOddsWork
-        assert mock_session.execute.call_count == 3
-
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_returns_false_on_cached_none(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Returns False when cache contains None (known no-match)."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = None  # Cached as no-match
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.SKIPPED_NO_MATCH
-
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_creates_team_when_not_found(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Creates team when not found by name."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [None, None]  # Teams not found
-        mock_upsert_team.side_effect = [10, 20]  # Created teams
-        mock_cache_get.return_value = 42
-
-        mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game, "New Team", "Another Team")
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
-            away_team=TeamIdentity(league_code="NBA", name="Another Team", abbreviation="ANO"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        assert mock_upsert_team.call_count == 2
-
-
-
-class TestUpsertOddsCacheMiss:
-    """Tests for upsert_odds when cache misses."""
-
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_matches_by_team_ids(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Matches game by team IDs when cache misses."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False  # Cache miss
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = 42  # Match found
-
-        mock_game = MagicMock()
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        _setup_session_get(mock_session, mock_game)
-
-        # Mock execute for diagnostic queries
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        mock_match_by_ids.assert_called_once()
-        mock_cache_set.assert_called()
-
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_falls_back_to_ncaab_name_matching(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Falls back to NCAAB name matching when team ID match fails."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 9  # NCAAB
-        mock_find_team.side_effect = [100, 200]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Duke", "North Carolina")
-        mock_match_by_ids.return_value = None  # No match by IDs
-        mock_match_by_names.return_value = 42  # Match by names
-
-        mock_game = MagicMock()
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        _setup_session_get(mock_session, mock_game, "Duke Blue Devils", "North Carolina Tar Heels")
-
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NCAAB",
-            home_team=TeamIdentity(league_code="NCAAB", name="Duke Blue Devils", abbreviation="DUKE"),
-            away_team=TeamIdentity(league_code="NCAAB", name="North Carolina Tar Heels", abbreviation="UNC"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="spread",
-            line=-5.5,
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        mock_match_by_names.assert_called_once()
-
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_falls_back_to_non_ncaab_name_matching(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Falls back to non-NCAAB name matching when team ID match fails."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1  # NBA
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = None  # No match by IDs
-        mock_match_by_names.return_value = 42  # Match by names
-
-        mock_game = MagicMock()
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        _setup_session_get(mock_session, mock_game)
-
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        mock_match_by_names.assert_called_once()
-
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_creates_game_stub_when_no_match_future(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Creates game stub for future games when no existing game matches."""
         from datetime import timedelta
-
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = None
-        mock_match_by_names.return_value = None  # No match found
-        mock_upsert_stub.return_value = (42, True)  # Created new game
-
-        # Use a future date so stub creation is allowed
-        future_date = datetime.now(UTC) + timedelta(days=1)
-
-        mock_game = MagicMock()
-        mock_game.game_date = future_date
-        _setup_session_get(mock_session, mock_game)
-
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=future_date,
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-            source_key="odds_api_123",
-        )
-
+        tomorrow = datetime.now(UTC) + timedelta(days=1)
+        snapshot = _make_snapshot(game_date=tomorrow)
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        mock_upsert_stub.assert_called_once()
-        # Verify external_ids contains source_key
-        call_kwargs = mock_upsert_stub.call_args[1]
-        assert call_kwargs["external_ids"]["odds_api_event_id"] == "odds_api_123"
+        mock_find.assert_called_once()
 
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_skips_stub_for_historical_unmatched(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-    ):
-        """Historical games that can't be matched are skipped, not stubbed."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_skips_when_no_game_match(self, mock_find):
         from sports_scraper.persistence.odds import upsert_odds
 
+        mock_find.return_value = (None, False)
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = None
-        mock_match_by_names.return_value = None
 
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-            source_key="odds_api_123",
-        )
-
+        snapshot = _make_snapshot()  # historical date (2024)
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.SKIPPED_NO_MATCH
-        mock_cache_set.assert_called()  # Cached as None so we don't retry
 
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_handles_game_stub_exception(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Returns False when game stub creation fails."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_skips_live_games(self, mock_find):
+        from sports_scraper.persistence.odds import upsert_odds
+        from sports_scraper.db import db_models
+
+        mock_find.return_value = (42, False)
+        mock_session = MagicMock()
+        mock_game = MagicMock()
+        mock_game.status = db_models.GameStatus.live.value
+        mock_session.get.return_value = mock_game
+
+        snapshot = _make_snapshot(
+            game_date=datetime.now(UTC) + __import__('datetime').timedelta(days=1),
+        )
+        result = upsert_odds(mock_session, snapshot)
+
+        assert result is OddsUpsertResult.SKIPPED_LIVE
+
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_skips_far_future_games(self, mock_find):
+        from datetime import timedelta
         from sports_scraper.persistence.odds import upsert_odds
 
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = None
-        mock_match_by_names.return_value = None
-        mock_upsert_stub.side_effect = Exception("Database error")
-
-        mock_session.execute.return_value.all.return_value = []
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
+        # Game 5 days in the future
+        future = datetime.now(UTC) + timedelta(days=5)
+        snapshot = _make_snapshot(game_date=future)
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.SKIPPED_NO_MATCH
-        mock_cache_set.assert_called()  # Should cache None
+        mock_find.assert_not_called()
 
-
-class TestUpsertOddsDiagnostics:
-    """Tests for diagnostic logging in upsert_odds."""
-
-    @patch("sports_scraper.persistence.odds.upsert_game_stub")
-    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
-    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
-    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_diagnostic_queries_executed(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-        mock_canonicalize,
-        mock_match_by_ids,
-        mock_match_by_names,
-        mock_upsert_stub,
-    ):
-        """Executes diagnostic queries for debugging."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_creates_stub_for_future_games(self, mock_find):
+        from datetime import timedelta
         from sports_scraper.persistence.odds import upsert_odds
 
+        mock_find.return_value = (99, True)  # created
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = False
-        mock_canonicalize.return_value = ("Lakers", "Celtics")
-        mock_match_by_ids.return_value = 42
-
         mock_game = MagicMock()
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        _setup_session_get(mock_session, mock_game)
+        mock_game.status = "scheduled"
+        mock_session.get.return_value = mock_game
 
-        # Mock diagnostic query results
-        mock_session.execute.return_value.all.return_value = [
-            (1, datetime(2024, 1, 15, 19, 0), 10, 20),
-        ]
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
+        tomorrow = datetime.now(UTC) + timedelta(days=1)
+        snapshot = _make_snapshot(game_date=tomorrow)
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        # Should execute diagnostic queries
-        assert mock_session.execute.call_count >= 1
+        # Should call find_or_create_game with create_if_missing=True
+        call_kwargs = mock_find.call_args[1]
+        assert call_kwargs["create_if_missing"] is True
 
-
-class TestUpsertOddsWithSideValue:
-    """Tests for upsert_odds with side values."""
-
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_handles_spread_with_side(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Handles spread bet with side value."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_no_stub_for_historical_games(self, mock_find):
         from sports_scraper.persistence.odds import upsert_odds
 
+        mock_find.return_value = (None, False)
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = 42
 
+        snapshot = _make_snapshot()  # 2024 date = historical
+        result = upsert_odds(mock_session, snapshot)
+
+        assert result is OddsUpsertResult.SKIPPED_NO_MATCH
+        call_kwargs = mock_find.call_args[1]
+        assert call_kwargs["create_if_missing"] is False
+
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_passes_event_id_as_external_id(self, mock_find):
+        from sports_scraper.persistence.odds import upsert_odds
+
+        mock_find.return_value = (42, False)
+        mock_session = MagicMock()
         mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game)
+        mock_game.status = "scheduled"
+        mock_session.get.return_value = mock_game
 
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="spread",
-            side="home",
-            line=-5.5,
-            price=-110,
-            observed_at=datetime.now(UTC),
+        snapshot = _make_snapshot(
+            game_date=datetime.now(UTC) + __import__('datetime').timedelta(days=1),
+            source_key="odds_api_abc123",
         )
-
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        # Two execute calls: SportsGameOdds opening + closing
-        # (FairBet skipped: side="home" doesn't match either DB team name)
-        assert mock_session.execute.call_count == 2
+        call_kwargs = mock_find.call_args[1]
+        assert call_kwargs["external_ids"]["odds_api_event_id"] == "odds_api_abc123"
 
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_handles_closing_line(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Handles closing line flag."""
+    @patch("sports_scraper.persistence.odds.find_or_create_game")
+    def test_sets_last_odds_at(self, mock_find):
         from sports_scraper.persistence.odds import upsert_odds
 
+        mock_find.return_value = (42, False)
         mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, 20]
-        mock_cache_get.return_value = 42
-
         mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game)
+        mock_game.status = "scheduled"
+        mock_session.get.return_value = mock_game
 
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-            is_closing_line=True,
+        snapshot = _make_snapshot(
+            game_date=datetime.now(UTC) + __import__('datetime').timedelta(days=1),
         )
+        upsert_odds(mock_session, snapshot)
 
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-
-
-class TestUpsertOddsTeamCreation:
-    """Tests for team creation in upsert_odds."""
-
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_creates_home_team_when_not_found(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Creates home team when not found by name."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [None, 20]  # Home team not found
-        mock_upsert_team.return_value = 10  # Created
-        mock_cache_get.return_value = 42
-
-        mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game, "New Team", "Celtics")
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
-            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        mock_upsert_team.assert_called_once()
-
-    @patch("sports_scraper.persistence.odds.cache_set")
-    @patch("sports_scraper.persistence.odds.cache_get")
-    @patch("sports_scraper.persistence.odds._upsert_team")
-    @patch("sports_scraper.persistence.odds._find_team_by_name")
-    @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_creates_away_team_when_not_found(
-        self,
-        mock_get_league_id,
-        mock_find_team,
-        mock_upsert_team,
-        mock_cache_get,
-        mock_cache_set,
-    ):
-        """Creates away team when not found by name."""
-        from sports_scraper.persistence.odds import upsert_odds
-
-        mock_session = MagicMock()
-        mock_get_league_id.return_value = 1
-        mock_find_team.side_effect = [10, None]  # Away team not found
-        mock_upsert_team.return_value = 20  # Created
-        mock_cache_get.return_value = 42
-
-        mock_game = MagicMock()
-        _setup_session_get(mock_session, mock_game, "Lakers", "New Team")
-
-        snapshot = NormalizedOddsSnapshot(
-            league_code="NBA",
-            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
-            away_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
-            book="draftkings",
-            market_type="moneyline",
-            price=-110,
-            observed_at=datetime.now(UTC),
-        )
-
-        result = upsert_odds(mock_session, snapshot)
-
-        assert result is OddsUpsertResult.PERSISTED
-        mock_upsert_team.assert_called_once()
+        assert mock_game.last_odds_at is not None

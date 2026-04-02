@@ -29,6 +29,14 @@ from sports_scraper.persistence.games import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _mock_game_redis_cache(monkeypatch):
+    """Disable Redis game match cache for all tests in this module."""
+    monkeypatch.setattr("sports_scraper.persistence.games._cache_get", lambda key: None)
+    monkeypatch.setattr("sports_scraper.persistence.games._cache_set", lambda key, game_id: None)
+    monkeypatch.setattr("sports_scraper.persistence.games._cache_delete", lambda key: None)
+
+
 class TestNormalizeStatus:
     """Tests for _normalize_status function."""
 
@@ -309,8 +317,14 @@ class TestUpsertGameStub:
 
         mock_session = MagicMock()
         mock_get_league_id.return_value = 1
-        mock_upsert_team.side_effect = [10, 20]  # home_team_id, away_team_id
-        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
+        mock_upsert_team.side_effect = [10, 20]
+
+        # Make all query chains return None for .first() at any depth
+        query_mock = MagicMock()
+        query_mock.filter.return_value = query_mock
+        query_mock.first.return_value = None
+        mock_session.query.return_value = query_mock
+        mock_session.get.return_value = None
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
         away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
@@ -331,7 +345,7 @@ class TestUpsertGameStub:
     @patch("sports_scraper.persistence.games._upsert_team")
     @patch("sports_scraper.persistence.games.get_league_id")
     def test_updates_existing_game(self, mock_get_league_id, mock_upsert_team):
-        """Updates an existing game."""
+        """Updates an existing game when found by team IDs + date."""
         from sports_scraper.persistence.games import upsert_game_stub
 
         mock_session = MagicMock()
@@ -346,7 +360,14 @@ class TestUpsertGameStub:
         existing_game.venue = None
         existing_game.external_ids = {}
         existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+        existing_game.season_type = "regular"
+
+        # Make all query chains return existing_game for .first()
+        query_mock = MagicMock()
+        query_mock.filter.return_value = query_mock
+        query_mock.first.return_value = existing_game
+        mock_session.query.return_value = query_mock
+        mock_session.get.return_value = None
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
         away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
@@ -385,7 +406,11 @@ class TestUpsertGameStub:
         existing_game.venue = None
         existing_game.external_ids = {}
         existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+        query_mock = MagicMock()
+        query_mock.filter.return_value = query_mock
+        query_mock.first.return_value = existing_game
+        mock_session.query.return_value = query_mock
+        mock_session.get.return_value = None
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
         away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
@@ -420,7 +445,11 @@ class TestUpsertGameStub:
         existing_game.venue = None
         existing_game.external_ids = {"existing": "123"}
         existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
-        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+        query_mock = MagicMock()
+        query_mock.filter.return_value = query_mock
+        query_mock.first.return_value = existing_game
+        mock_session.query.return_value = query_mock
+        mock_session.get.return_value = None
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
         away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
