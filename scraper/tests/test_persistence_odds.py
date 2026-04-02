@@ -756,7 +756,7 @@ class TestUpsertOddsCacheMiss:
     @patch("sports_scraper.persistence.odds._upsert_team")
     @patch("sports_scraper.persistence.odds._find_team_by_name")
     @patch("sports_scraper.persistence.odds.get_league_id")
-    def test_creates_game_stub_when_no_match(
+    def test_creates_game_stub_when_no_match_future(
         self,
         mock_get_league_id,
         mock_find_team,
@@ -768,7 +768,9 @@ class TestUpsertOddsCacheMiss:
         mock_match_by_names,
         mock_upsert_stub,
     ):
-        """Creates game stub when no existing game matches."""
+        """Creates game stub for future games when no existing game matches."""
+        from datetime import timedelta
+
         from sports_scraper.persistence.odds import upsert_odds
 
         mock_session = MagicMock()
@@ -780,9 +782,64 @@ class TestUpsertOddsCacheMiss:
         mock_match_by_names.return_value = None  # No match found
         mock_upsert_stub.return_value = (42, True)  # Created new game
 
+        # Use a future date so stub creation is allowed
+        future_date = datetime.now(UTC) + timedelta(days=1)
+
         mock_game = MagicMock()
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
+        mock_game.game_date = future_date
         _setup_session_get(mock_session, mock_game)
+
+        mock_session.execute.return_value.all.return_value = []
+
+        snapshot = NormalizedOddsSnapshot(
+            league_code="NBA",
+            home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
+            away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
+            game_date=future_date,
+            book="draftkings",
+            market_type="moneyline",
+            price=-110,
+            observed_at=datetime.now(UTC),
+            source_key="odds_api_123",
+        )
+
+        result = upsert_odds(mock_session, snapshot)
+
+        assert result is OddsUpsertResult.PERSISTED
+        mock_upsert_stub.assert_called_once()
+        # Verify external_ids contains source_key
+        call_kwargs = mock_upsert_stub.call_args[1]
+        assert call_kwargs["external_ids"]["odds_api_event_id"] == "odds_api_123"
+
+    @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")
+    @patch("sports_scraper.persistence.odds.match_game_by_team_ids")
+    @patch("sports_scraper.persistence.odds.canonicalize_team_names")
+    @patch("sports_scraper.persistence.odds.cache_set")
+    @patch("sports_scraper.persistence.odds.cache_get")
+    @patch("sports_scraper.persistence.odds._upsert_team")
+    @patch("sports_scraper.persistence.odds._find_team_by_name")
+    @patch("sports_scraper.persistence.odds.get_league_id")
+    def test_skips_stub_for_historical_unmatched(
+        self,
+        mock_get_league_id,
+        mock_find_team,
+        mock_upsert_team,
+        mock_cache_get,
+        mock_cache_set,
+        mock_canonicalize,
+        mock_match_by_ids,
+        mock_match_by_names,
+    ):
+        """Historical games that can't be matched are skipped, not stubbed."""
+        from sports_scraper.persistence.odds import upsert_odds
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_find_team.side_effect = [10, 20]
+        mock_cache_get.return_value = False
+        mock_canonicalize.return_value = ("Lakers", "Celtics")
+        mock_match_by_ids.return_value = None
+        mock_match_by_names.return_value = None
 
         mock_session.execute.return_value.all.return_value = []
 
@@ -800,11 +857,8 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is OddsUpsertResult.PERSISTED
-        mock_upsert_stub.assert_called_once()
-        # Verify external_ids contains source_key
-        call_kwargs = mock_upsert_stub.call_args[1]
-        assert call_kwargs["external_ids"]["odds_api_event_id"] == "odds_api_123"
+        assert result is OddsUpsertResult.SKIPPED_NO_MATCH
+        mock_cache_set.assert_called()  # Cached as None so we don't retry
 
     @patch("sports_scraper.persistence.odds.upsert_game_stub")
     @patch("sports_scraper.persistence.odds.match_game_by_names_non_ncaab")

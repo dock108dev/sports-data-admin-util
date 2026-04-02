@@ -337,11 +337,28 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             )
 
     if game_id is None:
-        # Game not found - create it via upsert_game_stub
-        # Odds API is the sole creator of game records (for both historical and future dates)
         game_date_only = to_et_date(snapshot.game_date)
         today = date.today()
         is_historical = game_date_only < today
+
+        # Historical games: NEVER create stubs. The game should already
+        # exist from boxscore/schedule ingestion. If matching failed, skip
+        # the odds record rather than creating a duplicate game.
+        # This prevents the duplicate-game problem that occurs when odds
+        # come back after a quota blackout.
+        if is_historical:
+            if should_log(f"odds_skip_historical_unmatched:{snapshot.league_code}"):
+                logger.warning(
+                    "odds_skip_historical_unmatched",
+                    league=snapshot.league_code,
+                    game_date=str(game_date_only),
+                    home_team=snapshot.home_team.name,
+                    away_team=snapshot.away_team.name,
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                )
+            cache_set(cache_key, None)
+            return OddsUpsertResult.SKIPPED_NO_MATCH
 
         # Guard: reject game stubs more than 48 hours in the future.
         # The Odds API sometimes returns events outside the requested
@@ -358,12 +375,12 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             cache_set(cache_key, None)
             return OddsUpsertResult.SKIPPED_NO_MATCH
 
-        # Build external_ids with Odds API source key if available
+        # Future/today games: create a stub so odds are captured before
+        # the game appears in schedule ingestion.
         external_ids = {}
         if snapshot.source_key:
             external_ids["odds_api_event_id"] = snapshot.source_key
 
-        # Historical games are created with "scheduled" status - boxscore scraping will update to "final"
         try:
             game_id, created = upsert_game_stub(
                 session,
