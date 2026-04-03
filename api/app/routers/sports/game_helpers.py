@@ -378,44 +378,44 @@ def serialize_social_posts(
     return entries
 
 
-async def enqueue_single_game_run(
+async def enqueue_single_game_resync(
     session: AsyncSession,
     game: SportsGame,
-    *,
-    include_boxscores: bool,
-    include_odds: bool,
-    scraper_type: str,
 ) -> JobResponse:
-    """Create a scrape run and enqueue it for a single game."""
+    """Resync all data for a single game (boxscores, player stats, odds, PBP,
+    advanced stats).  No social or flow."""
 
     await session.refresh(game, attribute_names=["league"])
     if not game.league:
         raise HTTPException(status_code=400, detail="League missing for game")
 
+    game_date_et = to_et_date(game.game_date)
+
     config = ScrapeRunConfig(
         league_code=game.league.code,
         season=game.season,
         season_type=getattr(game, "season_type", "regular"),
-        start_date=to_et_date(game.game_date),
-        end_date=to_et_date(game.game_date),
-        boxscores=include_boxscores,
-        odds=include_odds,
+        start_date=game_date_et,
+        end_date=game_date_et,
+        boxscores=True,
+        odds=True,
         social=False,
-        pbp=False,
+        pbp=True,
+        advanced_stats=True,
         only_missing=False,
         updated_before=None,
         include_books=None,
     )
 
     run = SportsScrapeRun(
-        scraper_type=scraper_type,
+        scraper_type="game_resync",
         league_id=game.league_id,
         season=game.season,
         season_type=getattr(game, "season_type", "regular"),
-        start_date=datetime.combine(to_et_date(game.game_date), datetime.min.time()),
-        end_date=datetime.combine(to_et_date(game.game_date), datetime.min.time()),
+        start_date=datetime.combine(game_date_et, datetime.min.time()),
+        end_date=datetime.combine(game_date_et, datetime.min.time()),
         status="pending",
-        requested_by="admin_boxscore_viewer",
+        requested_by="admin_game_resync",
         config=config.model_dump(by_alias=False),
     )
     session.add(run)
@@ -431,4 +431,4 @@ async def enqueue_single_game_run(
     )
     run.job_id = async_result.id
 
-    return JobResponse(run_id=run.id, job_id=async_result.id, message="Job enqueued")
+    return JobResponse(run_id=run.id, job_id=async_result.id, message="Resync enqueued")

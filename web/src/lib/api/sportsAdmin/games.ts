@@ -33,13 +33,13 @@ export async function fetchGame(gameId: number | string): Promise<AdminGameDetai
   return request(`/api/admin/sports/games/${idStr}`);
 }
 
-export async function rescrapeGame(gameId: number): Promise<JobResponse> {
-  return request(`/api/admin/sports/games/${gameId}/rescrape`, { method: "POST" });
+export async function resyncGame(gameId: number): Promise<JobResponse> {
+  return request(`/api/admin/sports/games/${gameId}/resync`, { method: "POST" });
 }
 
-export async function resyncOdds(gameId: number): Promise<JobResponse> {
-  return request(`/api/admin/sports/games/${gameId}/resync-odds`, { method: "POST" });
-}
+// Legacy aliases
+export const rescrapeGame = resyncGame;
+export const resyncOdds = resyncGame;
 
 /**
  * Fetch the game flow for a game.

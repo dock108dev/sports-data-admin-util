@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
+import { fetchGame, resyncGame, type AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { ROUTES } from "@/lib/constants/routes";
 import { deriveDataStatus, type DataField } from "@/lib/utils/dataStatus";
 import { DataStatusIndicator } from "@/components/admin/DataStatusIndicator";
@@ -31,7 +31,7 @@ export default function GameDetailClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<"rescrape" | "odds" | null>(null);
+  const [actionLoading, setActionLoading] = useState<"resync" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,27 +70,14 @@ export default function GameDetailClient() {
     }));
   }, [game]);
 
-  const handleRescrape = async () => {
+  const handleResync = async () => {
     setActionStatus(null);
-    setActionLoading("rescrape");
+    setActionLoading("resync");
     try {
-      const res = await rescrapeGame(Number.parseInt(gameIdParam, 10));
-      setActionStatus(res.message || "Rescrape requested");
+      const res = await resyncGame(Number.parseInt(gameIdParam, 10));
+      setActionStatus(res.message || "Resync requested — fetching boxscores, player stats, odds, PBP, and advanced stats");
     } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : "Rescrape failed");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleResyncOdds = async () => {
-    setActionStatus(null);
-    setActionLoading("odds");
-    try {
-      const res = await resyncOdds(Number.parseInt(gameIdParam, 10));
-      setActionStatus(res.message || "Odds resync requested");
-    } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : "Odds resync failed");
+      setActionStatus(`Resync failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(null);
     }
@@ -158,19 +145,11 @@ export default function GameDetailClient() {
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={handleRescrape}
+            onClick={handleResync}
             disabled={!!actionLoading}
-            style={{ padding: "0.55rem 0.9rem", borderRadius: 8, border: "1px solid #cbd5e1" }}
+            style={{ padding: "0.55rem 0.9rem", borderRadius: 8, border: "1px solid #3b82f6", background: "#3b82f6", color: "#fff", fontWeight: 500 }}
           >
-            {actionLoading === "rescrape" ? "Requesting..." : "Rescrape game"}
-          </button>
-          <button
-            type="button"
-            onClick={handleResyncOdds}
-            disabled={!!actionLoading}
-            style={{ padding: "0.55rem 0.9rem", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          >
-            {actionLoading === "odds" ? "Requesting..." : "Resync odds"}
+            {actionLoading === "resync" ? "Requesting..." : "Resync game"}
           </button>
           <button
             type="button"

@@ -22,7 +22,7 @@ from ...db.sports import (
 from .game_detail import router as detail_router
 from .game_helpers import (
     apply_game_filters,
-    enqueue_single_game_run,
+    enqueue_single_game_resync,
     summarize_game,
 )
 from .schemas import (
@@ -229,29 +229,21 @@ async def list_games(
     )
 
 
-@router.post("/games/{game_id}/rescrape", response_model=JobResponse)
+@router.post("/games/{game_id}/resync", response_model=JobResponse)
+async def resync_game(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
+    """Resync all data for a game: boxscores, player stats, odds, PBP, advanced stats."""
+    game = await session.get(SportsGame, game_id)
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+    return await enqueue_single_game_resync(session, game)
+
+
+# Keep old endpoints as aliases for backward compatibility
+@router.post("/games/{game_id}/rescrape", response_model=JobResponse, include_in_schema=False)
 async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
-    game = await session.get(SportsGame, game_id)
-    if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    return await enqueue_single_game_run(
-        session,
-        game,
-        include_boxscores=True,
-        include_odds=False,
-        scraper_type="game_rescrape",
-    )
+    return await resync_game(game_id, session)
 
 
-@router.post("/games/{game_id}/resync-odds", response_model=JobResponse)
+@router.post("/games/{game_id}/resync-odds", response_model=JobResponse, include_in_schema=False)
 async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
-    game = await session.get(SportsGame, game_id)
-    if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    return await enqueue_single_game_run(
-        session,
-        game,
-        include_boxscores=False,
-        include_odds=True,
-        scraper_type="odds_resync",
-    )
+    return await resync_game(game_id, session)
