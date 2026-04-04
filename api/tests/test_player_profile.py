@@ -105,6 +105,56 @@ class TestPitcherRollingProfile:
     """Tests for get_pitcher_rolling_profile."""
 
     @pytest.mark.asyncio
+    async def test_cross_team_pitcher_includes_all_teams(self):
+        """Pitcher traded mid-season should include stats from both teams.
+
+        The query should NOT filter by team_id, so a pitcher who played
+        for team 1 and team 2 gets all their games in the profile.
+        """
+        db = AsyncMock()
+
+        # 3 games with team_id=1, 3 games with team_id=2
+        # All should be included since we no longer filter by team_id
+        game_date = datetime(2026, 3, 1, tzinfo=UTC)
+        stats_team1 = {
+            "innings_pitched": 6.0,
+            "strike_outs": 6,
+            "base_on_balls": 2,
+            "home_runs": 1,
+            "hits": 5,
+        }
+        stats_team2 = {
+            "innings_pitched": 7.0,
+            "strike_outs": 8,
+            "base_on_balls": 1,
+            "home_runs": 0,
+            "hits": 3,
+        }
+        # Simulate 6 rows coming back (3 from each team, but query doesn't
+        # filter by team so they all come through)
+        rows = [
+            (MagicMock(stats=stats_team1), game_date),
+            (MagicMock(stats=stats_team1), game_date),
+            (MagicMock(stats=stats_team1), game_date),
+            (MagicMock(stats=stats_team2), game_date),
+            (MagicMock(stats=stats_team2), game_date),
+            (MagicMock(stats=stats_team2), game_date),
+        ]
+
+        result_mock = MagicMock()
+        result_mock.all.return_value = rows
+        db.execute.return_value = result_mock
+
+        # Pass team_id=2 (current team) — should still get all 6 games
+        result = await get_pitcher_rolling_profile("pitcher789", 2, db=db)
+        assert result is not None
+        # The K rate should be a blend of both teams' stats, not just team 2
+        # team1 approx: 6/(5+2+6+1)=0.4286, team2 approx: 8/(3+1+8+0)=0.6667
+        # blended ≈ 0.5476
+        assert result["strikeout_rate"] > 0.43  # higher than team1-only
+        assert result["strikeout_rate"] < 0.67  # lower than team2-only
+
+    @pytest.mark.asyncio
     async def test_returns_none_for_insufficient_data(self):
         """Returns None when pitcher has < 3 games."""
         db = AsyncMock()

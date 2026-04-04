@@ -472,9 +472,11 @@ async def _try_build_lineup_weights(
     ``game_context``, False otherwise (caller should fall back to team-level).
     """
     from app.analytics.services.lineup_fetcher import (
-        fetch_probable_starter,
-        fetch_recent_lineup,
+        fetch_consensus_lineup,
         get_team_external_ref,
+    )
+    from app.analytics.services.mlb_rotation_service import (
+        predict_probable_starter,
     )
     from app.analytics.services.lineup_reconstruction import (
         get_starting_pitcher,
@@ -503,10 +505,10 @@ async def _try_build_lineup_weights(
             db, game.id, game.away_team_id,
         )
     else:
-        home_lineup_batters = await fetch_recent_lineup(
+        home_lineup_batters = await fetch_consensus_lineup(
             db, game.home_team_id, before_game_id=game.id,
         )
-        away_lineup_batters = await fetch_recent_lineup(
+        away_lineup_batters = await fetch_consensus_lineup(
             db, game.away_team_id, before_game_id=game.id,
         )
         home_lineup_data = {"batters": home_lineup_batters} if home_lineup_batters else None
@@ -548,16 +550,18 @@ async def _try_build_lineup_weights(
         away_sp_info = await get_starting_pitcher(db, game.id, game.away_team_id)
         home_sp_info = await get_starting_pitcher(db, game.id, game.home_team_id)
     else:
-        # For future games, try MLB Stats API probable pitchers
+        # For future games, try MLB Stats API → rotation prediction → OpenAI
         from app.utils.datetime_utils import to_et_date
         game_date = to_et_date(game.game_date) if game.game_date else None
         if game_date:
             away_ext = await get_team_external_ref(db, game.away_team_id)
             home_ext = await get_team_external_ref(db, game.home_team_id)
-            if away_ext:
-                away_sp_info = await fetch_probable_starter(game_date, away_ext)
-            if home_ext:
-                home_sp_info = await fetch_probable_starter(game_date, home_ext)
+            away_sp_info = await predict_probable_starter(
+                db, game.away_team_id, game_date, away_ext,
+            )
+            home_sp_info = await predict_probable_starter(
+                db, game.home_team_id, game_date, home_ext,
+            )
 
     logger.info(
         "lineup_build_pitcher_lookup",

@@ -337,7 +337,7 @@ export function PregameSimulator() {
                 style={{ width: "100%", marginTop: "0.25rem" }}
               >
                 <option value="">Select SP</option>
-                {homePitchers.map((p) => (
+                {[...homePitchers].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                   <option key={p.external_ref} value={p.external_ref}>
                     {p.name} ({p.games}G, {p.avg_ip.toFixed(1)} avg IP)
                   </option>
@@ -362,7 +362,7 @@ export function PregameSimulator() {
                 style={{ width: "100%", marginTop: "0.25rem" }}
               >
                 <option value="">Select SP</option>
-                {awayPitchers.map((p) => (
+                {[...awayPitchers].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                   <option key={p.external_ref} value={p.external_ref}>
                     {p.name} ({p.games}G, {p.avg_ip.toFixed(1)} avg IP)
                   </option>

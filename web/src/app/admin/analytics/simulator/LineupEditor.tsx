@@ -31,7 +31,7 @@ export function LineupEditor({
               style={{ flex: 1, fontSize: "0.85rem" }}
             >
               <option value="">Select batter</option>
-              {batters.map((b) => (
+              {[...batters].sort((a, b) => a.name.localeCompare(b.name)).map((b) => (
                 <option key={b.external_ref} value={b.external_ref}>
                   {b.name} ({b.games_played}G)
                 </option>

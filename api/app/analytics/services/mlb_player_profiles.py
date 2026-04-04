@@ -154,7 +154,12 @@ async def _pitcher_profile_from_statcast(
     exclude_playoffs: bool = False,
     db: AsyncSession,
 ) -> dict[str, float] | None:
-    """Build pitcher profile from MLBPitcherGameStats (Statcast-enriched)."""
+    """Build pitcher profile from MLBPitcherGameStats (Statcast-enriched).
+
+    Note: team_id is NOT used as a query filter so that pitchers who
+    changed teams retain their full cross-team history (matching the
+    batter profile pattern in ``get_player_rolling_profile``).
+    """
     try:
         from app.db.mlb_advanced import MLBPitcherGameStats
         from app.db.sports import SportsGame
@@ -164,7 +169,6 @@ async def _pitcher_profile_from_statcast(
             .join(SportsGame, SportsGame.id == MLBPitcherGameStats.game_id)
             .where(
                 MLBPitcherGameStats.player_external_ref == player_external_ref,
-                MLBPitcherGameStats.team_id == team_id,
                 SportsGame.status == "final",
             )
             .order_by(SportsGame.game_date.desc())
@@ -235,7 +239,11 @@ async def _pitcher_profile_from_boxscore(
     exclude_playoffs: bool = False,
     db: AsyncSession,
 ) -> dict[str, float] | None:
-    """Fallback pitcher profile from SportsPlayerBoxscore JSONB stats."""
+    """Fallback pitcher profile from SportsPlayerBoxscore JSONB stats.
+
+    Note: team_id is NOT used as a query filter so that pitchers who
+    changed teams retain their full cross-team history.
+    """
     from app.db.sports import SportsGame, SportsPlayerBoxscore
 
     stmt = (
@@ -243,7 +251,6 @@ async def _pitcher_profile_from_boxscore(
         .join(SportsGame, SportsGame.id == SportsPlayerBoxscore.game_id)
         .where(
             SportsPlayerBoxscore.player_external_ref == player_external_ref,
-            SportsPlayerBoxscore.team_id == team_id,
             SportsGame.status == "final",
         )
         .order_by(SportsGame.game_date.desc())
