@@ -75,8 +75,15 @@ def build_game_flow_pass_prompt(
     prompt_parts = [
         GAME_FLOW_PASS_PROMPT,
         "",
-        f"Game: {away_team} at {home_team}",
+        f"Game: {away_team} (away) at {home_team} (home)",
     ]
+
+    if league_code == "MLB":
+        prompt_parts.append(
+            f"\nREMINDER: {away_team} bats first (top of each inning), "
+            f"{home_team} bats second (bottom). Do not say the home team "
+            f"'struck first' if the away team scored in the top of the inning."
+        )
 
     score_unit = "runs" if league_code == "MLB" else "pts"
     if is_close_game:
@@ -311,6 +318,20 @@ def build_block_prompt(
             "- Extra innings (10th+), not 'overtime'",
             "- 'went on a 3-run rally' not 'went on a 12-0 run'",
             "",
+            "INNING STRUCTURE (CRITICAL):",
+            f"- {away_team} is the AWAY team and bats FIRST in every inning (top half).",
+            f"- {home_team} is the HOME team and bats SECOND in every inning (bottom half).",
+            "- If the away team scores in the 1st inning, they 'struck first' — the home team has not batted yet.",
+            "- NEVER say the home team 'struck first' or 'set the tone' if the away team scored in the top of the same inning.",
+            "- When describing early action, respect batting order: away team's offense comes before home team's in every inning.",
+            "",
+            "SCORELESS INNINGS:",
+            "- If both teams went scoreless in an inning, describe it plainly — don't manufacture drama.",
+            "- Do NOT use phrases like 'the game tightened', 'momentum shifted', or 'the tide turned' for innings where no runs scored and no lead changed.",
+            "- A routine scoreless inning is fine to summarize briefly: 'Both teams went quietly in the third.'",
+            "- Only use tension language for scoreless innings if it's a 0-0 game in the late innings (7th+) — that's a genuine pitcher's duel.",
+            "- If a block covers innings where the score didn't change, focus on notable defensive plays or pitching, not manufactured narrative tension.",
+            "",
         ])
 
     # Add close-game-specific guidance
@@ -407,6 +428,11 @@ def build_block_prompt(
             f"Score: {away_team} {score_before[1]}-{score_before[0]} {home_team} "
             f"-> {away_team} {score_after[1]}-{score_after[0]} {home_team}"
         )
+
+        # Flag whether scoring actually happened in this block
+        total_runs_scored = abs(score_after[0] - score_before[0]) + abs(score_after[1] - score_before[1])
+        if total_runs_scored == 0 and league_code == "MLB":
+            prompt_parts.append("(No runs scored in this block — describe plainly, no manufactured drama)")
 
         # Add explicit overtime flag when block enters/contains OT
         if ot_info["enters_overtime"]:

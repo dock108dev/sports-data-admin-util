@@ -140,7 +140,10 @@ class TestIngestPbpViaMlbApi:
         mock_select.return_value = [(100, 717001, "final")]
 
         payload = MagicMock()
-        payload.plays = [MagicMock() for _ in range(60)]
+        plays = [MagicMock() for _ in range(60)]
+        for p in plays:
+            p.quarter = 1  # real game action
+        payload.plays = plays
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
         game = _make_game()
@@ -200,7 +203,10 @@ class TestIngestPbpViaMlbApi:
         mock_select.return_value = [(100, 717001, "final")]
 
         payload = MagicMock()
-        payload.plays = [MagicMock() for _ in range(60)]
+        plays = [MagicMock() for _ in range(60)]
+        for p in plays:
+            p.quarter = 1
+        payload.plays = plays
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
         game = _make_game()
@@ -222,7 +228,10 @@ class TestIngestPbpViaMlbApi:
         mock_select.return_value = [(100, 717001, "final")]
 
         payload = MagicMock()
-        payload.plays = [MagicMock() for _ in range(10)]  # below threshold
+        plays = [MagicMock() for _ in range(10)]  # below threshold
+        for p in plays:
+            p.quarter = 1
+        payload.plays = plays
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
         game = _make_game()

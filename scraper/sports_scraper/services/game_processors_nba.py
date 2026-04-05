@@ -7,7 +7,7 @@ public dispatcher API.
 from __future__ import annotations
 
 from ..logging import logger
-from .game_processors import GameProcessResult
+from .game_processors import GameProcessResult, try_promote_to_live
 
 
 def check_game_status_nba(session, game, *, client=None) -> GameProcessResult:
@@ -88,22 +88,7 @@ def process_game_pbp_nba(session, game, *, client=None) -> GameProcessResult:
         result.events_inserted = inserted or 0
         game.last_pbp_at = now_utc()
 
-        # Infer live if PBP has plays but game is still pregame
-        if game.status == db_models.GameStatus.pregame.value:
-            game.status = db_models.GameStatus.live.value
-            game.updated_at = now_utc()
-            result.transition = {
-                "game_id": game.id,
-                "from": "pregame",
-                "to": "live",
-            }
-            logger.info(
-                "poll_pbp_inferred_live",
-                game_id=game.id,
-                league="NBA",
-                reason="pbp_plays_found",
-                play_count=len(payload.plays),
-            )
+        try_promote_to_live(game, payload.plays, result, "NBA")
 
     return result
 

@@ -7,7 +7,7 @@ public dispatcher API.
 from __future__ import annotations
 
 from ..logging import logger
-from .game_processors import GameProcessResult
+from .game_processors import GameProcessResult, try_promote_to_live
 
 
 def process_game_pbp_ncaab(session, game, *, client=None) -> GameProcessResult:
@@ -101,22 +101,7 @@ def _fetch_ncaa_pbp(session, game, ncaa_game_id, client) -> GameProcessResult:
         result.events_inserted = inserted or 0
         game.last_pbp_at = now_utc()
 
-        if game.status == db_models.GameStatus.pregame.value:
-            game.status = db_models.GameStatus.live.value
-            game.updated_at = now_utc()
-            result.transition = {
-                "game_id": game.id,
-                "from": "pregame",
-                "to": "live",
-            }
-            logger.info(
-                "poll_pbp_inferred_live",
-                game_id=game.id,
-                league="NCAAB",
-                reason="ncaa_pbp_plays_found",
-                play_count=len(payload.plays),
-                ncaa_game_id=ncaa_game_id,
-            )
+        try_promote_to_live(game, payload.plays, result, "NCAAB")
 
     return result
 

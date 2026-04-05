@@ -335,7 +335,7 @@ class TestProcessGamePbpNba:
         mock_upsert.return_value = 3
 
         client = MagicMock()
-        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=["p1"])
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=[_mock_play(1)])
 
         game = _make_game(
             external_ids={"nba_game_id": "0022400100"},
@@ -533,7 +533,7 @@ class TestProcessGamePbpNhl:
         mock_upsert.return_value = 3
 
         client = MagicMock()
-        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=["p1"])
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=[_mock_play(1)])
 
         game = _make_game(external_ids={"nhl_game_pk": "2024020100"}, status="pregame")
 
@@ -692,6 +692,13 @@ class TestCheckGameStatusMlb:
         assert game.end_time == now_val
 
 
+def _mock_play(quarter=1):
+    """Create a mock play object with a quarter attribute."""
+    p = MagicMock()
+    p.quarter = quarter
+    return p
+
+
 class TestProcessGamePbpMlb:
     @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.utils.datetime_utils.now_utc")
@@ -700,7 +707,9 @@ class TestProcessGamePbpMlb:
         mock_upsert.return_value = 12
 
         client = MagicMock()
-        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=["p1", "p2"])
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(
+            plays=[_mock_play(1), _mock_play(1)],
+        )
 
         game = _make_game(external_ids={"mlb_game_pk": "717001"}, status="live")
         session = MagicMock()
@@ -713,11 +722,15 @@ class TestProcessGamePbpMlb:
     @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.utils.datetime_utils.now_utc")
     def test_infers_live_from_pregame(self, mock_now, mock_upsert):
+        """Promotes pregame → live only when plays have actual game action (quarter >= 1)."""
         mock_now.return_value = datetime(2025, 6, 15, 20, 0, 0, tzinfo=UTC)
         mock_upsert.return_value = 3
 
+        # Play with quarter=1 = real game action
+        game_play = MagicMock()
+        game_play.quarter = 1
         client = MagicMock()
-        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=["p1"])
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=[game_play])
 
         game = _make_game(external_ids={"mlb_game_pk": "717001"}, status="pregame")
 
@@ -728,6 +741,30 @@ class TestProcessGamePbpMlb:
 
         assert result.transition is not None
         assert result.transition["to"] == "live"
+
+    @patch("sports_scraper.persistence.plays.upsert_plays")
+    @patch("sports_scraper.utils.datetime_utils.now_utc")
+    def test_does_not_infer_live_from_pregame_events(self, mock_now, mock_upsert):
+        """Pre-game status change events (quarter=0 or None) should NOT promote to live."""
+        mock_now.return_value = datetime(2025, 6, 15, 18, 0, 0, tzinfo=UTC)
+        mock_upsert.return_value = 1
+
+        # Play with quarter=None = pre-game event (lineup, status change)
+        pregame_event = MagicMock()
+        pregame_event.quarter = None
+        client = MagicMock()
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=[pregame_event])
+
+        game = _make_game(external_ids={"mlb_game_pk": "717001"}, status="pregame")
+
+        with patch("sports_scraper.db.db_models") as mock_db:
+            mock_db.GameStatus.pregame.value = "pregame"
+            mock_db.GameStatus.live.value = "live"
+            result = process_game_pbp_mlb(MagicMock(), game, client=client)
+
+        # Should NOT promote — plays exist but are pre-game events
+        assert result.transition is None
+        assert game.status == "pregame"
 
     def test_missing_mlb_game_pk_returns_empty(self):
         game = _make_game(external_ids={})
@@ -1314,7 +1351,7 @@ class TestProcessGamePbpNfl:
         mock_upsert.return_value = 3
 
         client = MagicMock()
-        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=["p1"])
+        client.fetch_play_by_play.return_value = _mock_pbp_payload(plays=[_mock_play(1)])
 
         game = _make_game(
             external_ids={"espn_game_id": "401547000"},
