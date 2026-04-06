@@ -268,6 +268,40 @@ Content-Type: application/json
 
 Returns `{"detail": "Account deleted"}`. Permanent — cannot be undone.
 
+#### User Preferences
+
+Authenticated users can sync client preferences:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/me/preferences` | Fetch saved preferences |
+| `PUT` | `/auth/me/preferences` | Replace preferences |
+| `PATCH` | `/auth/me/preferences` | Partial merge update |
+
+**Preferences payload**
+```json
+{
+  "settings": {
+    "theme": "dark",
+    "scoreRevealMode": "blacklist",
+    "scoreHideLeagues": ["NBA", "NHL"],
+    "scoreHideTeams": ["Los Angeles Lakers", "Boston Celtics"]
+  },
+  "pinnedGameIds": [101, 202],
+  "revealedGameIds": [303]
+}
+```
+
+**Score reveal fields**
+- `settings.scoreRevealMode`: `"always" | "onMarkRead" | "blacklist"`
+- `settings.scoreHideLeagues`: string array, normalized to uppercase, deduped, max 20
+- `settings.scoreHideTeams`: string array, trimmed + case-insensitive dedupe, max 100
+
+**Compatibility notes**
+- Old clients can omit new score-hide fields; server preserves previously saved values.
+- Unknown `scoreRevealMode` values are coerced to `"onMarkRead"` for safety.
+- GET always returns `scoreRevealMode`, `scoreHideLeagues`, and `scoreHideTeams`.
+
 ### Admin User Management
 
 Admin-only endpoints for managing user accounts. Secured by API key (admin UI).

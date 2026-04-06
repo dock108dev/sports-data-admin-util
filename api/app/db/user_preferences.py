@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, func
+from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +27,15 @@ class UserPreferences(Base):
     )
     settings: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default="{}"
+    )
+    score_reveal_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="onMarkRead"
+    )
+    score_hide_leagues: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    score_hide_teams: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
     )
     pinned_game_ids: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), nullable=False, server_default="{}"

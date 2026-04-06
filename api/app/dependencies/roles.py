@@ -9,6 +9,7 @@ Provides:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 from typing import Any
 
 import jwt
@@ -134,11 +135,29 @@ def decode_magic_link_token(token: str) -> int:
 # ---------------------------------------------------------------------------
 
 def _is_admin_origin(request: Request) -> bool:
-    """Check if the request Origin matches a configured admin origin."""
+    """Check if request origin context matches configured admin origins.
+
+    Accepts:
+    - ``Origin`` from direct browser requests
+    - ``X-Forwarded-Origin`` from internal proxy routes
+    - origin parsed from ``Referer`` as a fallback
+    """
+    candidates: set[str] = set()
     origin = request.headers.get("origin")
-    if not origin:
-        return False
-    return origin in settings.admin_origins
+    fwd_origin = request.headers.get("x-forwarded-origin")
+    referer = request.headers.get("referer")
+    if origin:
+        candidates.add(origin)
+    if fwd_origin:
+        candidates.add(fwd_origin)
+    if referer:
+        try:
+            parsed = urlparse(referer)
+            if parsed.scheme and parsed.netloc:
+                candidates.add(f"{parsed.scheme}://{parsed.netloc}")
+        except ValueError:
+            pass
+    return any(candidate in settings.admin_origins for candidate in candidates)
 
 
 async def resolve_role(
