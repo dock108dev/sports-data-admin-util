@@ -66,6 +66,9 @@ class StructuredLoggingMiddleware:
 
         # Resolve or generate a request ID for correlation
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        state = scope.setdefault("state", {})
+        if isinstance(state, dict):
+            state["request_id"] = request_id
 
         async def send_wrapper(message: dict) -> None:
             if message["type"] == "http.response.start":

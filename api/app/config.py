@@ -45,6 +45,28 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
     )
+    fairbet_cursor_enabled: bool = Field(default=True, alias="FAIRBET_CURSOR_ENABLED")
+    fairbet_light_default_enabled: bool = Field(
+        default=True, alias="FAIRBET_LIGHT_DEFAULT_ENABLED"
+    )
+    fairbet_redis_limiter_enabled: bool = Field(
+        default=False, alias="FAIRBET_REDIS_LIMITER_ENABLED"
+    )
+    fairbet_odds_limiter_requests: int = Field(
+        default=240, alias="FAIRBET_ODDS_LIMITER_REQUESTS"
+    )
+    fairbet_odds_limiter_window_seconds: int = Field(
+        default=60, alias="FAIRBET_ODDS_LIMITER_WINDOW_SECONDS"
+    )
+    fairbet_odds_cache_enabled: bool = Field(
+        default=True, alias="FAIRBET_ODDS_CACHE_ENABLED"
+    )
+    fairbet_odds_cache_ttl_seconds: int = Field(
+        default=15, alias="FAIRBET_ODDS_CACHE_TTL_SECONDS"
+    )
+    fairbet_odds_snapshot_ttl_seconds: int = Field(
+        default=60, alias="FAIRBET_ODDS_SNAPSHOT_TTL_SECONDS"
+    )
 
     # API Authentication
     # Required in production - all endpoints except /healthz require this key
@@ -161,6 +183,14 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must be at least 32 characters long.")
         if self.rate_limit_requests <= 0 or self.rate_limit_window_seconds <= 0:
             raise ValueError("Rate limit settings must be positive integers.")
+        if self.fairbet_odds_cache_ttl_seconds <= 0:
+            raise ValueError("FAIRBET_ODDS_CACHE_TTL_SECONDS must be positive.")
+        if self.fairbet_odds_snapshot_ttl_seconds <= 0:
+            raise ValueError("FAIRBET_ODDS_SNAPSHOT_TTL_SECONDS must be positive.")
+        if self.fairbet_odds_limiter_requests <= 0:
+            raise ValueError("FAIRBET_ODDS_LIMITER_REQUESTS must be positive.")
+        if self.fairbet_odds_limiter_window_seconds <= 0:
+            raise ValueError("FAIRBET_ODDS_LIMITER_WINDOW_SECONDS must be positive.")
         return self
 
 

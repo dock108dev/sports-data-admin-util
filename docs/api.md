@@ -1190,16 +1190,29 @@ Get bet-centric odds for cross-book comparison with EV annotations.
 | `player_name` | `string` | — | Filter by player name (partial match, case-insensitive) |
 | `min_ev` | `float` | — | Minimum EV% threshold |
 | `has_fair` | `bool` | — | Filter to bets with (`true`) or without (`false`) fair odds |
-| `sort_by` | `string` | `ev` | Sort order: `ev`, `game_time`, `market` |
+| `exclude_categories` | `string[]` | — | Exclude one or more market categories |
+| `sort_by` | `string` | `game_time` | Sort order: `ev`, `game_time`, `market` |
 | `limit` | `int` | 100 | Max results (1-500) |
 | `offset` | `int` | 0 | Pagination offset |
+| `cursor` | `string` | — | Cursor token for deterministic keyset pagination (preferred over offset) |
+| `snapshotId` | `string` | — | Required for subsequent `sort_by=ev` pages |
+| `include_meta` | `bool` | `false` | Include filter metadata arrays (`books_available`, `market_categories_available`, `games_available`) |
 
-> **Note:** Only includes pregame games (future start time). Excluded books (see [Reference Tables](#excluded-sportsbooks-20)) are filtered out automatically at query time.
+> **Notes:**
+> - Only includes pregame games (future start time).
+> - Excluded books (see [Reference Tables](#excluded-sportsbooks-20)) are filtered out automatically at query time.
+> - `sort_by=ev` uses snapshot semantics for stable pagination. First request creates a snapshot and returns `snapshotId`; follow-up pages must pass that `snapshotId` with `cursor`.
 
 **Response:**
 ```json
 {
-  "bets": [
+  "requestId": "2f3de337-c894-4c80-85a5-28fd28b5ca25",
+  "generatedAt": "2026-04-06T15:32:11.625Z",
+  "pageLatencyMs": 137,
+  "partial": false,
+  "warnings": [],
+  "snapshotId": null,
+  "items": [
     {
       "game_id": 123,
       "league_code": "NBA",
@@ -1301,6 +1314,9 @@ Get bet-centric odds for cross-book comparison with EV annotations.
       ]
     }
   ],
+  "bets": [/* same as items; compatibility field */],
+  "nextCursor": "eyJzb3J0IjoiZ2FtZV90aW1lIiwidiI6WyIyMDI2LTAxLTMxVDE5OjAwOjAwKzAwOjAwIiwxMjMsInNwcmVhZHMiLCJ0ZWFtOmxvc19hbmdlbGVzX2xha2VycyIsLTMuNV19",
+  "hasMore": true,
   "total": 245,
   "books_available": ["BetMGM", "Caesars", "DraftKings", "FanDuel", "Pinnacle"],
   "market_categories_available": ["mainline", "player_prop", "team_prop"],
@@ -1337,9 +1353,21 @@ Get bet-centric odds for cross-book comparison with EV annotations.
 - `ev_method_explanation`: Sentence explaining how fair odds were derived
 - `explanation_steps`: Step-by-step math walkthrough of how fair odds were derived. Each step has `step_number`, `title`, `description`, and `detail_rows` (label/value pairs with optional `is_highlight`). `null` when not enriched. Paths: Pinnacle devig (3-4 steps), extrapolated (3-4 steps), fallback (1-2 steps), not available (1 step with disabled reason label)
 - `ev_config`: Global configuration for EV display thresholds
+- `items`: Primary paginated payload. `bets` is retained for backward compatibility.
+- `nextCursor` / `hasMore`: Cursor pagination controls for deterministic page traversal.
+- `snapshotId`: Stable-result snapshot handle for EV-sorted pagination.
+- `generatedAt`: Server generation timestamp for this page.
+- `requestId`: Mirrors `X-Request-ID` for log correlation.
+- `pageLatencyMs`: End-to-end handler latency for this page.
+- `partial` / `warnings`: Indicates degraded responses when upstream dependencies fail.
 - Per-book `book_abbr`: Short abbreviation (e.g., "DK", "FD", "PIN")
 - Per-book `price_decimal`: Decimal odds equivalent of the American price
 - Per-book `ev_tier`: `"strong_positive"` (≥5%), `"positive"` (≥0%), `"negative"`, or `"neutral"` (sharp book)
+
+### `GET /odds/meta`
+
+Fetches FairBet filter metadata only (books, market categories, games) without odds rows.
+Supports the same filter params as `GET /odds`.
 
 ### `POST /parlay/evaluate`
 

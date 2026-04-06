@@ -22,6 +22,7 @@ from fastapi import Request
 from starlette.responses import JSONResponse
 
 from app.config import settings
+from app.services.fairbet_runtime import redis_allow_request
 
 
 _EXEMPT_PREFIXES = ("/v1/sse", "/auth/me")
@@ -38,6 +39,7 @@ _AUTH_STRICT_PREFIXES = (
 # 10 requests per 60 seconds for auth endpoints.
 _AUTH_STRICT_LIMIT = 10
 _AUTH_STRICT_WINDOW = 60
+_FAIRBET_PREFIX = "/api/fairbet/odds"
 
 
 class RateLimitMiddleware:
@@ -83,6 +85,21 @@ class RateLimitMiddleware:
             auth_times.append(now)
 
         # --- Global tier ---
+        if settings.fairbet_redis_limiter_enabled and path.startswith(_FAIRBET_PREFIX):
+            allowed, retry_after = redis_allow_request(
+                client_key=client_ip,
+                limit=settings.fairbet_odds_limiter_requests,
+                window_seconds=settings.fairbet_odds_limiter_window_seconds,
+            )
+            if not allowed:
+                response = JSONResponse(
+                    {"detail": "Rate limit exceeded"},
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+                await response(scope, receive, send)
+                return
+
         window = settings.rate_limit_window_seconds
         limit = settings.rate_limit_requests
 
