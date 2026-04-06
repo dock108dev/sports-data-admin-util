@@ -132,11 +132,11 @@ app.include_router(fairbet.router, dependencies=auth_dependency)
 app.include_router(model_odds_router, dependencies=auth_dependency)
 
 # ---------------------------------------------------------------------------
-# Analytics — admin UI endpoints, secured by API key (same as other admin
-# routers). The proxy forwards X-API-Key but not Authorization, so
-# role-based deps (require_admin) would 403 in production.
+# Analytics — admin-only endpoints (training, batch simulation, model
+# activation).  Admin UI requests are granted admin via Origin check;
+# consumer apps must send a JWT with role=admin.
 # ---------------------------------------------------------------------------
-app.include_router(analytics_router, dependencies=auth_dependency)
+app.include_router(analytics_router, dependencies=admin_dependency)
 
 # ---------------------------------------------------------------------------
 # Golf — tournament, player, odds, and DFS endpoints
@@ -144,49 +144,50 @@ app.include_router(analytics_router, dependencies=auth_dependency)
 app.include_router(golf_router, dependencies=auth_dependency)
 
 # ---------------------------------------------------------------------------
-# Admin UI routers — secured by API key (admin utility on secured server)
+# Admin UI routers — require admin role (Origin-based for admin UI,
+# JWT-based for consumer apps)
 # ---------------------------------------------------------------------------
 app.include_router(
     timeline_jobs.router,
     prefix="/api/admin/sports",
     tags=["admin"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     pipeline.router,
     prefix="/api/admin/sports",
     tags=["admin", "pipeline"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     pbp.router,
     prefix="/api/admin/sports",
     tags=["admin", "pbp"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     resolution.router,
     prefix="/api/admin/sports",
     tags=["admin", "resolution"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     odds_sync.router,
     prefix="/api/admin",
     tags=["admin", "odds"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     task_control.router,
     prefix="/api/admin",
     tags=["admin", "tasks"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 app.include_router(
     users.router,
     prefix="/api/admin",
     tags=["admin", "users"],
-    dependencies=auth_dependency,
+    dependencies=admin_dependency,
 )
 
 # ---------------------------------------------------------------------------

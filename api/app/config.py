@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     allowed_cors_origins_raw: str | None = Field(
         default=None, alias="ALLOWED_CORS_ORIGINS"
     )
+    admin_origins_raw: str | None = Field(
+        default=None, alias="ADMIN_ORIGINS"
+    )
     rate_limit_requests: int = Field(default=120, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
@@ -108,6 +111,20 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3002",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
+        ]
+
+    @property
+    def admin_origins(self) -> list[str]:
+        """Origins that are implicitly treated as admin (the admin UI)."""
+        if self.admin_origins_raw:
+            return [
+                origin.strip()
+                for origin in self.admin_origins_raw.split(",")
+                if origin.strip()
+            ]
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
         ]
 
     @property

@@ -133,20 +133,32 @@ def decode_magic_link_token(token: str) -> int:
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
+def _is_admin_origin(request: Request) -> bool:
+    """Check if the request Origin matches a configured admin origin."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return False
+    return origin in settings.admin_origins
+
+
 async def resolve_role(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
     """Determine the caller's role.
 
-    * No ``Authorization`` header → ``"guest"``
     * Valid JWT → role claim from the token
+    * No JWT + request Origin matches ``ADMIN_ORIGINS`` → ``"admin"``
+      (admin UI sits behind API-key auth and doesn't forward JWTs)
+    * No JWT + unknown origin → ``"guest"``
     * ``AUTH_ENABLED=false`` → ``"admin"`` (feature-flag fallback)
     """
     if not settings.auth_enabled:
         return "admin"
 
     if credentials is None:
+        if _is_admin_origin(request):
+            return "admin"
         return "guest"
 
     try:

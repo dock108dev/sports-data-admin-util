@@ -14,6 +14,8 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from app.config import settings
+
 from .auth import verify_ws_api_key
 from .manager import WSConnection, realtime_manager
 from .models import is_valid_channel
@@ -29,6 +31,17 @@ MAX_MESSAGE_SIZE = 256 * 1024  # 256 KB
 @router.websocket("/v1/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocket realtime endpoint."""
+    # Origin check — reject connections from unknown origins
+    origin = websocket.headers.get("origin")
+    allowed = settings.allowed_cors_origins + settings.admin_origins
+    if isinstance(origin, str) and origin not in allowed:
+        logger.warning(
+            "ws_origin_rejected",
+            extra={"origin": origin},
+        )
+        await websocket.close(code=4403, reason="Origin not allowed")
+        return
+
     # Auth check before accepting
     if not await verify_ws_api_key(websocket):
         await websocket.close(code=4401, reason="Unauthorized")
