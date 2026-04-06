@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.services import fairbet_runtime as fr
 
 
@@ -65,6 +67,12 @@ class _FakeRedis:
 
     def pipeline(self):
         return _Pipe(self)
+
+
+@pytest.fixture(autouse=True)
+def _reset_runtime_circuit(monkeypatch):
+    """Keep tests isolated from global Redis-circuit state."""
+    monkeypatch.setattr(fr, "_redis_error_until", 0.0)
 
 
 def test_cursor_roundtrip():

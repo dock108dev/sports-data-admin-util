@@ -147,17 +147,21 @@ def _is_admin_origin(request: Request) -> bool:
     fwd_origin = request.headers.get("x-forwarded-origin")
     referer = request.headers.get("referer")
     if origin:
-        candidates.add(origin)
+        candidates.add(str(origin))
     if fwd_origin:
-        candidates.add(fwd_origin)
+        candidates.add(str(fwd_origin))
     if referer:
         try:
-            parsed = urlparse(referer)
+            parsed = urlparse(str(referer))
             if parsed.scheme and parsed.netloc:
                 candidates.add(f"{parsed.scheme}://{parsed.netloc}")
         except ValueError:
             pass
-    return any(candidate in settings.admin_origins for candidate in candidates)
+    origins_cfg = getattr(settings, "admin_origins", ())
+    if not isinstance(origins_cfg, (list, tuple, set, frozenset)):
+        origins_cfg = ()
+    allowed_origins = {str(origin) for origin in origins_cfg if origin}
+    return any(candidate in allowed_origins for candidate in candidates)
 
 
 async def resolve_role(

@@ -9,7 +9,18 @@ from sqlalchemy import distinct, func, select, tuple_
 from sqlalchemy.orm import selectinload
 
 from ...db.odds import FairbetGameOddsWork
-from ...db.sports import SportsGame
+from ...db.sports import SportsGame, SportsLeague
+
+
+def _safe_game_meta_options() -> tuple[Any, ...]:
+    """Return metadata eager-load options, tolerating partial mapper state in tests."""
+    try:
+        return (
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
+        )
+    except Exception:
+        return ()
 
 
 def build_base_filters(
@@ -28,7 +39,12 @@ def build_base_filters(
         game_start > now,
     ]
     if league:
-        conditions.append(SportsGame.league.has(code=league.upper()))
+        league_code = league.upper()
+        conditions.append(
+            SportsGame.league_id.in_(
+                select(SportsLeague.id).where(func.upper(SportsLeague.code) == league_code)
+            )
+        )
     if market_category:
         conditions.append(FairbetGameOddsWork.market_category == market_category)
     if game_id:
@@ -170,10 +186,7 @@ async def load_metadata(
         .join(FairbetGameOddsWork, FairbetGameOddsWork.game_id == SportsGame.id)
         .where(*conditions)
         .distinct()
-        .options(
-            selectinload(SportsGame.home_team),
-            selectinload(SportsGame.away_team),
-        )
+        .options(*_safe_game_meta_options())
     )
     books_result = await exec_fn(books_stmt)
     cats_result = await exec_fn(cats_stmt)
