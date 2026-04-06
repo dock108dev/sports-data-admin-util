@@ -14,6 +14,7 @@ For horizontal scaling, replace with a Redis-backed limiter.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -86,10 +87,11 @@ class RateLimitMiddleware:
 
         # --- Global tier ---
         if settings.fairbet_redis_limiter_enabled and path.startswith(_FAIRBET_PREFIX):
-            allowed, retry_after = redis_allow_request(
-                client_key=client_ip,
-                limit=settings.fairbet_odds_limiter_requests,
-                window_seconds=settings.fairbet_odds_limiter_window_seconds,
+            allowed, retry_after = await asyncio.to_thread(
+                redis_allow_request,
+                client_ip,
+                settings.fairbet_odds_limiter_requests,
+                settings.fairbet_odds_limiter_window_seconds,
             )
             if not allowed:
                 response = JSONResponse(

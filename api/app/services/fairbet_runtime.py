@@ -112,11 +112,12 @@ def set_cached_response(
         logger.warning("fairbet_cache_write_error", extra={"error": str(exc)})
 
 
-def create_snapshot(query_hash: str, items: list[dict[str, Any]], total: int) -> tuple[str, datetime]:
+def create_snapshot(
+    query_hash: str, items: list[dict[str, Any]], total: int
+) -> tuple[str | None, datetime]:
     """Persist EV-sorted snapshot for stable cursor paging."""
     if _circuit_open():
-        sid = str(uuid.uuid4())
-        return sid, datetime.now(UTC)
+        return None, datetime.now(UTC)
 
     sid = str(uuid.uuid4())
     generated = datetime.now(UTC)
@@ -137,6 +138,7 @@ def create_snapshot(query_hash: str, items: list[dict[str, Any]], total: int) ->
     except Exception as exc:
         _trip_circuit()
         logger.warning("fairbet_snapshot_write_error", extra={"error": str(exc)})
+        return None, generated
     return sid, generated
 
 

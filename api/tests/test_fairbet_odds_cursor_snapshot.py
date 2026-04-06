@@ -65,3 +65,67 @@ async def test_cursor_sort_mismatch_returns_400():
         kwargs["cursor"] = bad_cursor
         await odds_router.get_fairbet_odds(**kwargs)
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_invalid_cursor_returns_400():
+    session = AsyncMock()
+    session.execute.return_value = _Result(None)  # max(updated_at)
+
+    with pytest.raises(HTTPException) as exc:
+        kwargs = _base_kwargs(session)
+        kwargs["sort_by"] = "game_time"
+        kwargs["cursor"] = "%%%not-a-valid-cursor%%%"
+        await odds_router.get_fairbet_odds(**kwargs)
+    assert exc.value.status_code == 400
+    assert "Invalid cursor" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_invalid_ev_snapshot_cursor_returns_400(monkeypatch):
+    session = AsyncMock()
+    session.execute.return_value = _Result(None)  # max(updated_at)
+    monkeypatch.setattr(odds_router, "build_query_hash", lambda _: "q")
+    monkeypatch.setattr(
+        odds_router,
+        "get_snapshot",
+        lambda _: {
+            "query_hash": "q",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "items": [],
+            "total": 0,
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        kwargs = _base_kwargs(session)
+        kwargs["sort_by"] = "ev"
+        kwargs["snapshot_id"] = "snap-1"
+        kwargs["cursor"] = "%%%not-a-valid-cursor%%%"
+        await odds_router.get_fairbet_odds(**kwargs)
+    assert exc.value.status_code == 400
+    assert "Invalid cursor for EV snapshot" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_has_fair_requires_ev_sort():
+    session = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        kwargs = _base_kwargs(session)
+        kwargs["sort_by"] = "game_time"
+        kwargs["has_fair"] = True
+        await odds_router.get_fairbet_odds(**kwargs)
+    assert exc.value.status_code == 400
+    assert "require sort_by=ev" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_min_ev_requires_ev_sort():
+    session = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        kwargs = _base_kwargs(session)
+        kwargs["sort_by"] = "market"
+        kwargs["min_ev"] = 1.5
+        await odds_router.get_fairbet_odds(**kwargs)
+    assert exc.value.status_code == 400
+    assert "require sort_by=ev" in str(exc.value.detail)

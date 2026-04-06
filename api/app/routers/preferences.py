@@ -33,27 +33,6 @@ SCORE_REVEAL_MODES = {"always", "onMarkRead", "blacklist"}
 DEFAULT_SCORE_REVEAL_MODE = "onMarkRead"
 
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-class SettingsPayload(BaseModel):
-    """Freeform settings dict — known keys validated, unknown ignored."""
-
-    model_config = {"extra": "allow"}
-
-    theme: str | None = None
-    scoreRevealMode: str | None = None
-    preferredSportsbook: str | None = None
-    oddsFormat: str | None = None
-    autoResumePosition: bool | None = None
-    homeExpandedSections: list[str] | None = None
-    hideLimitedData: bool | None = None
-    timelineDefaultTiers: list[int] | None = None
-    scoreHideLeagues: list[str] | None = None
-    scoreHideTeams: list[str] | None = None
-
-
 class PreferencesBody(BaseModel):
     settings: dict | None = None
     pinnedGameIds: list[int] | None = Field(None, max_length=MAX_PINNED)
