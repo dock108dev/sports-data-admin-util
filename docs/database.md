@@ -122,7 +122,7 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 
 | Table | Description |
 |-------|-------------|
-| `user_preferences` | User preferences — synced settings, pins, revealed scores (JSONB) |
+| `user_preferences` | User preferences — synced settings, pins, revealed scores, and score-hide policy (`score_reveal_mode`, `score_hide_leagues`, `score_hide_teams`) |
 | `game_reading_positions` | User reading position tracking (inactive — table exists but API route removed) |
 | `openai_response_cache` | Cached OpenAI API responses for pipeline stages |
 
