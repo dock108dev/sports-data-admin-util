@@ -79,6 +79,13 @@ def run_daily_sweep() -> dict:
             results["fairbet_odds_cleanup"] = {"error": str(exc)}
             logger.exception("daily_sweep_fairbet_odds_cleanup_error", error=str(exc))
 
+        # --- Phase 5: Purge Playwright/CI test users ---
+        try:
+            results["test_user_cleanup"] = _purge_test_users()
+        except Exception as exc:
+            results["test_user_cleanup"] = {"error": str(exc)}
+            logger.exception("daily_sweep_test_user_cleanup_error", error=str(exc))
+
         tracker.summary_data = results
         logger.info("daily_sweep_complete", results=results)
         return results
@@ -446,5 +453,31 @@ def _purge_completed_game_odds() -> dict:
         logger.info("fairbet_odds_purge_complete", deleted=deleted)
     else:
         logger.debug("fairbet_odds_purge_nothing_to_delete")
+
+    return {"deleted": deleted}
+
+
+def _purge_test_users() -> dict:
+    """Delete Playwright/CI test users created by e2e test runs.
+
+    Matches two patterns:
+    - ``e2e-*@test.scrolldown.dev`` (Playwright e2e tests)
+    - ``test+*@example.com``       (CI signup tests)
+    """
+    from sqlalchemy import text
+
+    with get_session() as session:
+        result = session.execute(text("""
+            DELETE FROM users
+            WHERE email LIKE 'e2e-%@test.scrolldown.dev'
+               OR email LIKE 'test+%@example.com'
+        """))
+        deleted = result.rowcount
+        session.commit()
+
+    if deleted:
+        logger.info("test_user_purge_complete", deleted=deleted)
+    else:
+        logger.debug("test_user_purge_nothing_to_delete")
 
     return {"deleted": deleted}
