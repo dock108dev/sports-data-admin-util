@@ -99,6 +99,86 @@ See [API Reference](api.md#simulator) for full documentation.
 
 ---
 
+## Daily Forecasts (MLB)
+
+Pre-computed predictions for all MLB games in the next 24 hours, refreshed hourly. **This is the recommended way for downstream apps to display MLB predictions** — no manual simulation needed.
+
+### `GET /api/analytics/forecasts/mlb`
+
+**Read-only** (API key only). Returns today's pre-computed predictions with line analysis.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `date` | `string` | today (ET) | Game date `YYYY-MM-DD` |
+| `game_id` | `int` | — | Filter to a specific game |
+| `min_edge` | `float` | — | Only include games where either side has at least this edge |
+
+**Response:**
+```json
+{
+  "forecasts": [
+    {
+      "game_id": 12345,
+      "game_date": "2026-04-07",
+      "home_team": "New York Yankees",
+      "away_team": "Boston Red Sox",
+      "home_win_prob": 0.583,
+      "away_win_prob": 0.417,
+      "predicted_home_score": 4.7,
+      "predicted_away_score": 3.8,
+      "probability_source": "lineup_matchup",
+      "line_analysis": {
+        "market_home_ml": -145,
+        "market_away_ml": 125,
+        "market_home_wp": 0.570,
+        "market_away_wp": 0.430,
+        "home_edge": 0.013,
+        "away_edge": -0.013,
+        "model_home_line": -152,
+        "model_away_line": 132,
+        "home_ev_pct": 2.3,
+        "away_ev_pct": -1.8,
+        "provider": "Pinnacle",
+        "line_type": "current"
+      },
+      "sim_meta": {
+        "iterations": 5000,
+        "wp_std_dev": 0.012,
+        "profile_games_home": 28,
+        "profile_games_away": 30,
+        "model_id": "mlb_pa_gb_20260401"
+      },
+      "refreshed_at": "2026-04-07T16:00:02Z"
+    }
+  ],
+  "date": "2026-04-07",
+  "count": 15,
+  "last_refreshed": "2026-04-07T16:00:02Z"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `home_win_prob` / `away_win_prob` | Model win probability (sums to 1.0) |
+| `predicted_home_score` / `predicted_away_score` | Average simulated final score |
+| `probability_source` | How probabilities were computed: `lineup_matchup`, `team_profile`, or `league_defaults` |
+| `line_analysis` | Current market odds comparison. `null` if no odds available for this game |
+| `line_analysis.home_edge` | Model edge vs market: positive = model thinks home is underpriced |
+| `line_analysis.home_ev_pct` | Expected value % if betting home at current market price |
+| `line_analysis.model_home_line` | Model's fair American odds (with ~2% vig) |
+| `sim_meta.model_id` | Which trained model was used. `null` = rule-based fallback |
+| `last_refreshed` | When the forecasts were last recomputed (refreshes hourly at :05) |
+
+### Usage Notes
+
+- **Refresh cadence:** Forecasts update hourly at :05 past each hour. The `last_refreshed` field tells you how fresh the data is.
+- **Edge filtering:** Use `?min_edge=0.03` to only show games where the model disagrees with the market by 3%+ on either side.
+- **No odds?** Games without current market odds will have `line_analysis: null`. The simulation results (`home_win_prob`, scores) are still valid.
+- **Off-season:** Returns `{"forecasts": [], "count": 0}` when no MLB games are scheduled.
+- **Stale data:** Rows older than 1 day are automatically cleaned up.
+
+---
+
 ## Models & Predictions (read-only)
 
 All of these are **read-only** (API key only):
