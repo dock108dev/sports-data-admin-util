@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from sports_scraper.services.game_state_updater import (
     _ARCHIVE_AFTER_DAYS,
     _cancel_phantom_finals,
+    _has_recent_data,
     _is_phantom_game,
     _promote_final_to_archived,
     _promote_pregame_to_live,
@@ -403,6 +404,112 @@ class TestPromoteStaleToFinal:
         assert games[0].status == "final"
         assert games[1].status == "canceled"
         assert games[2].status == "final"
+
+    @patch(f"{_MOD}.LEAGUE_CONFIG")
+    @patch(f"{_MOD}.now_utc", return_value=_utc_now())
+    def test_defers_live_game_with_recent_data(self, mock_now, mock_config):
+        """Live game past stale cutoff but with recent PBP → NOT promoted."""
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        config.postgame_window_hours = _POSTGAME_WINDOW_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        game = _make_game(
+            status="live",
+            game_date=now - timedelta(hours=8),
+            home_score=88,
+            away_score=90,
+            last_pbp_at=now - timedelta(minutes=10),  # fresh data
+        )
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = [game]
+
+        result = _promote_stale_to_final(session)
+        assert result == 0
+        assert game.status == "live"  # still live
+
+    @patch(f"{_MOD}.LEAGUE_CONFIG")
+    @patch(f"{_MOD}.now_utc", return_value=_utc_now())
+    def test_promotes_live_game_with_stale_data(self, mock_now, mock_config):
+        """Live game past cutoff with old PBP (>30 min) → promoted to final."""
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        config.postgame_window_hours = _POSTGAME_WINDOW_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        game = _make_game(
+            status="live",
+            game_date=now - timedelta(hours=8),
+            home_score=88,
+            away_score=90,
+            last_pbp_at=now - timedelta(hours=2),  # stale data
+        )
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = [game]
+
+        result = _promote_stale_to_final(session)
+        assert result == 1
+        assert game.status == "final"
+
+    @patch(f"{_MOD}.LEAGUE_CONFIG")
+    @patch(f"{_MOD}.now_utc", return_value=_utc_now())
+    def test_does_not_defer_scheduled_game_with_recent_data(self, mock_now, mock_config):
+        """Scheduled game with recent boxscore data → still promoted (only live is deferred)."""
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        config.postgame_window_hours = _POSTGAME_WINDOW_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        game = _make_game(
+            status="scheduled",
+            game_date=now - timedelta(hours=8),
+            home_score=100,
+            away_score=95,
+            last_boxscore_at=now - timedelta(minutes=10),  # recent, but game is scheduled not live
+        )
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = [game]
+
+        result = _promote_stale_to_final(session)
+        assert result == 1
+        assert game.status == "final"  # not deferred — only live games get deferred
+
+
+# ---------------------------------------------------------------------------
+# _has_recent_data
+# ---------------------------------------------------------------------------
+class TestHasRecentData:
+    def test_recent_pbp(self):
+        now = _utc_now()
+        game = _make_game(last_pbp_at=now - timedelta(minutes=10))
+        assert _has_recent_data(game, now) is True
+
+    def test_recent_boxscore(self):
+        now = _utc_now()
+        game = _make_game(last_boxscore_at=now - timedelta(minutes=5))
+        assert _has_recent_data(game, now) is True
+
+    def test_stale_data(self):
+        now = _utc_now()
+        game = _make_game(
+            last_pbp_at=now - timedelta(hours=2),
+            last_boxscore_at=now - timedelta(hours=2),
+        )
+        assert _has_recent_data(game, now) is False
+
+    def test_no_data(self):
+        now = _utc_now()
+        game = _make_game()  # all None
+        assert _has_recent_data(game, now) is False
 
 
 # ---------------------------------------------------------------------------

@@ -213,6 +213,19 @@ def _cancel_phantom_finals(session: Session) -> int:
     return canceled
 
 
+def _has_recent_data(game: db_models.SportsGame, now, minutes: int = 30) -> bool:
+    """Return True if the game received fresh PBP or boxscore data recently.
+
+    Used to protect live games from the stale timeout during rain delays
+    or extra innings — if data is still flowing, the game isn't stale.
+    """
+    cutoff = now - timedelta(minutes=minutes)
+    return (
+        (game.last_pbp_at is not None and game.last_pbp_at > cutoff)
+        or (game.last_boxscore_at is not None and game.last_boxscore_at > cutoff)
+    )
+
+
 def _promote_stale_to_final(session: Session) -> int:
     """Force overdue scheduled/pregame/live games to final.
 
@@ -221,6 +234,11 @@ def _promote_stale_to_final(session: Session) -> int:
     API glitch, worker crash). Uses per-league estimated_game_duration_hours
     + postgame_window_hours as the maximum time before we infer the game
     is over.
+
+    Live games that have received fresh data within the last 30 minutes
+    are protected from the stale timeout — rain delays and extra innings
+    can push games well past the estimated duration, but as long as data
+    is still flowing the game should remain live.
     """
     now = now_utc()
     promoted = 0
@@ -256,6 +274,22 @@ def _promote_stale_to_final(session: Session) -> int:
 
         for game in games:
             old_status = game.status
+
+            # Protect live games with recent data from the stale timeout.
+            # Rain delays/extras can push games far past estimated duration,
+            # but if data is still arriving the game isn't actually stale.
+            if old_status == db_models.GameStatus.live.value and _has_recent_data(game, now):
+                logger.info(
+                    "game_state_transition_deferred",
+                    game_id=game.id,
+                    league=league_code,
+                    from_status=old_status,
+                    game_date=str(game.game_date),
+                    last_pbp_at=str(game.last_pbp_at),
+                    reason="recent_data_still_flowing",
+                )
+                continue
+
             never_played = _is_phantom_game(game)
 
             if never_played:
