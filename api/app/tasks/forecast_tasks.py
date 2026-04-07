@@ -17,7 +17,13 @@ from app.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="refresh_mlb_forecasts", bind=True, max_retries=1)
+@celery_app.task(
+    name="refresh_mlb_forecasts",
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+)
 def refresh_mlb_forecasts(self) -> dict:
     """Entry point: refresh MLB daily forecasts."""
     loop = asyncio.new_event_loop()
@@ -77,7 +83,7 @@ async def _run_forecast_refresh(celery_task_id: str | None = None) -> dict:
         except Exception as exc:
             logger.exception("mlb_forecast_refresh_failed")
             await _complete_job_run(sf, run_id, "error", str(exc)[:500])
-            return {"error": str(exc)}
+            raise  # Let Celery handle retry/failure tracking
 
 
 def _get_active_model_id() -> str | None:
@@ -112,6 +118,9 @@ async def _upsert_forecasts(
             game_id = game_result.get("game_id")
             if not game_id:
                 continue
+            # Skip failed per-game simulations — don't publish 0.5/0.5 filler
+            if "error" in game_result:
+                continue
 
             line = game_result.get("line_analysis") or {}
             game_obj = games_by_id.get(game_id)
@@ -119,13 +128,16 @@ async def _upsert_forecasts(
             if game_obj and hasattr(game_obj, "game_date") and game_obj.game_date:
                 game_date_str = to_et_date(game_obj.game_date).isoformat()
 
+            home_team_id = getattr(game_obj, "home_team_id", 0) if game_obj else 0
+            away_team_id = getattr(game_obj, "away_team_id", 0) if game_obj else 0
+
             row = {
                 "game_id": game_id,
                 "game_date": game_date_str,
                 "home_team": game_result.get("home_team", ""),
                 "away_team": game_result.get("away_team", ""),
-                "home_team_id": game_result.get("home_team_id", 0),
-                "away_team_id": game_result.get("away_team_id", 0),
+                "home_team_id": home_team_id,
+                "away_team_id": away_team_id,
                 "home_win_prob": game_result.get("home_win_probability", 0.5),
                 "away_win_prob": game_result.get("away_win_probability", 0.5),
                 "predicted_home_score": game_result.get("average_home_score"),

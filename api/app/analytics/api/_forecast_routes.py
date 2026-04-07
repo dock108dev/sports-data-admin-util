@@ -93,8 +93,8 @@ async def get_mlb_forecasts(
     if min_edge is not None:
         abs_edge = abs(min_edge)
         stmt = stmt.where(
-            (MlbDailyForecast.home_edge > abs_edge)
-            | (MlbDailyForecast.away_edge > abs_edge)
+            (func.abs(MlbDailyForecast.home_edge) >= abs_edge)
+            | (func.abs(MlbDailyForecast.away_edge) >= abs_edge)
         )
 
     result = await db.execute(stmt)
