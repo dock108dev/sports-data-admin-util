@@ -278,6 +278,14 @@ _scheduled_tasks = {
         "schedule": crontab(minute="0,30", hour="0-8,17-23"),
         "options": {"queue": "celery", "routing_key": "celery", "expires": 1500},
     },
+    # === MLB forecast refresh (hourly) ===
+    # Pre-computes predictions for all MLB games in the next 24 hours.
+    # Results stored in mlb_daily_forecasts work table for downstream apps.
+    "mlb-forecast-refresh-hourly": {
+        "task": "refresh_mlb_forecasts",
+        "schedule": crontab(minute=5),  # :05 past each hour (avoids :00 pile-up)
+        "options": {"queue": "celery", "routing_key": "celery", "expires": 3300},
+    },
 }
 
 # Social polling — game social collection every 30 min, mapping staggered at :15/:45
