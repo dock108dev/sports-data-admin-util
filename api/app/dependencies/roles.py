@@ -179,6 +179,12 @@ async def resolve_role(
     if not settings.auth_enabled:
         return "admin"
 
+    # Requests that passed API-key verification (admin proxy) are admin.
+    # The API key is only held by the admin UI proxy, so a valid key
+    # is sufficient proof of admin access — no Origin check needed.
+    if getattr(request.state, "api_key_verified", False):
+        return "admin"
+
     if credentials is None:
         if _is_admin_origin(request):
             return "admin"

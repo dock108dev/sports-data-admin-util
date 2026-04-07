@@ -77,4 +77,8 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
+    # Mark request as API-key-authenticated so resolve_role() can grant
+    # admin access without requiring an Origin header match.
+    request.state.api_key_verified = True
+
     return api_key

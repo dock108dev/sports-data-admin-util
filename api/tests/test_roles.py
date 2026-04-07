@@ -109,6 +109,8 @@ class TestResolveRole:
     def mock_request(self) -> MagicMock:
         request = MagicMock()
         request.state = MagicMock()
+        # Default: no API-key auth (simulates direct caller, not admin proxy)
+        request.state.api_key_verified = False
         return request
 
     @pytest.mark.asyncio
