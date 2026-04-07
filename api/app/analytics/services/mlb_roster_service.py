@@ -7,6 +7,7 @@ with fallback to the MLB Stats API when no recent data is available.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,8 +25,6 @@ async def get_team_roster(
     Returns a dict with ``batters`` and ``pitchers`` lists built from
     recent final games. Returns ``None`` if the team cannot be found.
     """
-    from datetime import datetime, timedelta
-
     from sqlalchemy import cast, func, select
     from sqlalchemy.types import Float
 
@@ -36,8 +35,6 @@ async def get_team_roster(
         SportsPlayerBoxscore,
         SportsTeam,
     )
-
-    from datetime import UTC
 
     # Resolve team via MLB league (same pattern as get_team_rolling_profile)
     mlb_league_sq = (
@@ -149,7 +146,50 @@ async def get_team_roster(
         if fallback:
             return fallback
 
-    return {"batters": batters, "pitchers": pitchers}
+    # --- Projected lineup & probable starter ---
+    projected_lineup = await _fetch_projected_lineup(db, team.id)
+    probable_starter = await _fetch_probable_starter(team.external_ref)
+
+    result: dict[str, Any] = {"batters": batters, "pitchers": pitchers}
+    if projected_lineup:
+        result["projected_lineup"] = projected_lineup
+    if probable_starter:
+        result["probable_starter"] = probable_starter
+    return result
+
+
+async def _fetch_projected_lineup(
+    db: AsyncSession,
+    team_id: int,
+) -> list[dict[str, str]] | None:
+    """Return consensus batting order from recent games, or None."""
+    try:
+        from app.analytics.services.lineup_fetcher import fetch_consensus_lineup
+
+        return await fetch_consensus_lineup(db, team_id)
+    except Exception:
+        logger.debug("projected_lineup_unavailable", extra={"team_id": team_id}, exc_info=True)
+        return None
+
+
+async def _fetch_probable_starter(
+    team_external_ref: str | None,
+) -> dict[str, str] | None:
+    """Return today's probable starter from MLB Stats API, or None."""
+    if not team_external_ref:
+        return None
+    try:
+        from app.analytics.services.lineup_fetcher import fetch_probable_starter
+        from app.utils.datetime_utils import today_et
+
+        return await fetch_probable_starter(today_et(), team_external_ref)
+    except Exception:
+        logger.debug(
+            "probable_starter_unavailable",
+            extra={"team_ref": team_external_ref},
+            exc_info=True,
+        )
+        return None
 
 
 async def _fetch_mlb_api_roster(mlb_team_id: str) -> dict[str, Any] | None:
