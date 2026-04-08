@@ -431,7 +431,16 @@ async def _generate_feature_loadouts(
     """
     import random
 
+    from sqlalchemy import delete
     from app.db.analytics import AnalyticsFeatureConfig
+
+    # Clean up any stale configs from a previous failed run of this suite
+    prefix = f"exp-{suite.id}-"
+    stale = delete(AnalyticsFeatureConfig).where(
+        AnalyticsFeatureConfig.name.like(f"{prefix}%")
+    )
+    await db.execute(stale)
+    await db.flush()
 
     features = feature_grid.get("features", [])
     max_combos = min(feature_grid.get("max_combos", 100), 1000)
