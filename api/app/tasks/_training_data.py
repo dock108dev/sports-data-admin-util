@@ -190,6 +190,74 @@ async def _load_mlb_game_training_data_impl(
     for tid in team_history:
         team_history[tid].sort(key=lambda x: x[0])
 
+    # --- Load starting pitcher data for each game ---
+    from app.db.mlb_advanced import MLBPitcherGameStats
+
+    pitcher_stmt = (
+        select(MLBPitcherGameStats)
+        .where(MLBPitcherGameStats.game_id.in_([g.id for g in training_games]))
+    )
+    pitcher_result = await db.execute(pitcher_stmt)
+    all_pitcher_stats = pitcher_result.scalars().all()
+
+    # Group by game, find starter (pitcher with most IP)
+    pitchers_by_game: dict[int, dict[int, list]] = defaultdict(lambda: defaultdict(list))
+    for ps in all_pitcher_stats:
+        pitchers_by_game[ps.game_id][ps.team_id].append(ps)
+
+    def _get_starter_metrics(game_id: int, team_id: int) -> dict:
+        """Get rolling metrics for the starting pitcher of a game."""
+        team_pitchers = pitchers_by_game.get(game_id, {}).get(team_id, [])
+        if not team_pitchers:
+            return {}
+        # Starter = pitcher with most IP in this game
+        starter = max(team_pitchers, key=lambda p: getattr(p, "innings_pitched", 0) or 0)
+        return {
+            "k_rate": getattr(starter, "k_rate", None),
+            "bb_rate": getattr(starter, "bb_rate", None),
+            "era": getattr(starter, "era", None),
+            "whip": getattr(starter, "whip", None),
+            "innings_pitched": getattr(starter, "innings_pitched", None),
+        }
+
+    # --- Load closing lines for market probability feature ---
+    from app.db.odds import ClosingLine
+
+    closing_stmt = (
+        select(ClosingLine)
+        .where(
+            ClosingLine.game_id.in_([g.id for g in training_games]),
+            ClosingLine.market_key.in_(["h2h", "moneyline"]),
+        )
+    )
+    closing_result = await db.execute(closing_stmt)
+    all_closing_lines = closing_result.scalars().all()
+
+    # Build market WP per game
+    market_wp_by_game: dict[int, dict[str, float]] = {}
+    from app.services.ev import american_to_implied, remove_vig
+
+    lines_by_game: dict[int, list] = defaultdict(list)
+    for cl in all_closing_lines:
+        lines_by_game[cl.game_id].append(cl)
+
+    for game_id, lines in lines_by_game.items():
+        home_price = None
+        away_price = None
+        for cl in lines:
+            sel = (cl.selection or "").lower()
+            if "home" in sel:
+                home_price = cl.price_american
+            elif "away" in sel:
+                away_price = cl.price_american
+        if home_price is not None and away_price is not None:
+            try:
+                implied = [american_to_implied(home_price), american_to_implied(away_price)]
+                true_probs = remove_vig(implied)
+                market_wp_by_game[game_id] = {"home_wp": true_probs[0], "away_wp": true_probs[1]}
+            except (ValueError, ZeroDivisionError):
+                pass
+
     records = []
     skipped_insufficient = 0
 
@@ -231,9 +299,19 @@ async def _load_mlb_game_training_data_impl(
             skipped_insufficient += 1
             continue
 
+        # Starter pitcher metrics for this game
+        home_starter = _get_starter_metrics(game.id, home_stats.team_id)
+        away_starter = _get_starter_metrics(game.id, away_stats.team_id)
+
+        # Market probability (devigged Pinnacle lines)
+        market = market_wp_by_game.get(game.id, {"home_wp": 0.5, "away_wp": 0.5})
+
         records.append({
             "home_profile": {"metrics": home_profile},
             "away_profile": {"metrics": away_profile},
+            "home_starter_profile": {"metrics": home_starter},
+            "away_starter_profile": {"metrics": away_starter},
+            "market_profile": {"metrics": market},
             "home_win": 1 if home_score > away_score else 0,
             "home_score": home_score,
             "away_score": away_score,
@@ -246,6 +324,8 @@ async def _load_mlb_game_training_data_impl(
             "games_queried": len(training_games),
             "skipped_insufficient_history": skipped_insufficient,
             "rolling_window": rolling_window,
+            "games_with_market": len(market_wp_by_game),
+            "games_with_pitchers": sum(1 for g in training_games if g.id in pitchers_by_game),
         },
     )
     return records

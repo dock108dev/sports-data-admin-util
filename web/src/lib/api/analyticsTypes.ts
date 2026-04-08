@@ -14,7 +14,8 @@ export interface SimulationRequest {
   home_probabilities?: Record<string, number>;
   away_probabilities?: Record<string, number>;
   sportsbook?: Record<string, unknown>;
-  probability_mode?: "rule_based" | "ml" | "ensemble" | "pitch_level";
+  probability_mode?: "rule_based" | "ml" | "ensemble" | "pitch_level" | "market_blend";
+  blend_alpha?: number;
   rolling_window?: number;
   // Lineup-level simulation (optional)
   home_lineup?: { external_ref: string; name: string }[];
@@ -120,6 +121,8 @@ export interface ExperimentSuiteRequest {
     rolling_windows?: number[];
     feature_config_ids?: (number | null)[];
     test_splits?: number[];
+    probability_modes?: string[];
+    blend_alphas?: number[];
     date_start?: string;
     date_end?: string;
     feature_grid?: {

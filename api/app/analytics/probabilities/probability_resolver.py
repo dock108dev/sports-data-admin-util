@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 MODE_RULE_BASED = "rule_based"
 MODE_ML = "ml"
 MODE_ENSEMBLE = "ensemble"
+MODE_MARKET_BLEND = "market_blend"  # Uses ML internally; blend happens post-sim
 
 _DEFAULT_CONFIG: dict[str, Any] = {
     "probability_mode": MODE_ML,
@@ -86,6 +87,13 @@ class ProbabilityResolver:
             key = f"{MODE_ENSEMBLE}:{model_type}"
             if key not in self._providers:
                 self._providers[key] = EnsembleProvider(model_type=model_type)
+            return self._providers[key]
+
+        # market_blend routes to ML provider; the blend happens post-simulation
+        if mode == MODE_MARKET_BLEND:
+            key = f"{MODE_ML}:{model_type}"
+            if key not in self._providers:
+                self._providers[key] = MLProvider(model_type=model_type)
             return self._providers[key]
 
         raise ValueError(f"Unsupported probability mode: {mode}")
