@@ -16,12 +16,17 @@ HOLD_KEY = "sports:tasks_held"
 
 
 def _is_held() -> bool:
-    """Check whether the admin has held all scheduled task dispatch."""
+    """Check whether the admin has held all scheduled task dispatch.
+
+    Fails closed: if Redis is unreachable, assume tasks are held to
+    prevent unintended execution during infrastructure issues.
+    """
     try:
         r = _redis.from_url(settings.redis_url, decode_responses=True)
         return r.get(HOLD_KEY) == "1"
     except Exception:
-        return False
+        logger.warning("hold_check_redis_unavailable — failing closed (tasks held)")
+        return True
 
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
@@ -66,7 +71,7 @@ def _mark_job_run_skipped(celery_task_id: str | None) -> None:
                 run.finished_at = now_utc()
                 session.commit()
     except Exception:
-        pass  # best-effort cleanup
+        logger.warning("held_task_job_run_cleanup_failed", exc_info=True)
 
 
 class _HoldAwareTask(_celery_mod.Task):

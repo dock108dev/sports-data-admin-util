@@ -14,12 +14,17 @@ from ...db.sports import SportsGame, SportsLeague
 
 def _safe_game_meta_options() -> tuple[Any, ...]:
     """Return metadata eager-load options, tolerating partial mapper state in tests."""
+    import os
+
     try:
         return (
             selectinload(SportsGame.home_team),
             selectinload(SportsGame.away_team),
         )
     except Exception:
+        if os.environ.get("ENVIRONMENT", "development") == "production":
+            import logging
+            logging.getLogger(__name__).error("game_meta_options_failed_in_prod", exc_info=True)
         return ()
 
 

@@ -126,14 +126,14 @@ class PlaywrightXCollector:
             try:
                 self._browser.close()
             except Exception:
-                pass
+                logger.debug("browser_close_failed", exc_info=True)
             self._browser = None
             self._context = None
         if self._pw is not None:
             try:
                 self._pw.stop()
             except Exception:
-                pass
+                logger.debug("playwright_stop_failed", exc_info=True)
             self._pw = None
             logger.info("x_browser_stopped")
 
@@ -148,7 +148,7 @@ class PlaywrightXCollector:
         try:
             self._executor.shutdown(wait=True)
         except Exception:
-            pass
+            logger.debug("executor_shutdown_failed", exc_info=True)
 
     def __enter__(self):
         return self

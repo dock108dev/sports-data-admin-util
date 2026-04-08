@@ -41,11 +41,25 @@ The simulation engine runs Monte Carlo simulations with pluggable probability so
 
 1. `SimulationEngine.run_simulation()` receives game context (teams, probability mode, iterations)
 2. If `pitch_level` mode: routes to `_run_pitch_level()` (see Pitch-Level Simulation below)
-3. Otherwise: `ProbabilityResolver` selects the provider based on mode (`rule_based`, `ml`, `ensemble`)
-4. When home/away team profiles are both present, PA probabilities are resolved separately for each team — each team's batting profile is paired with the opposing team as the "pitcher" side, producing differentiated probabilities per team
-5. `SimulationRunner` invokes the sport-specific simulator N times (default 5,000–10,000)
-6. Results aggregated: win probabilities, average scores, score distribution, event summary, variance metrics (WP std dev, score std dev per team)
-7. `SimulationDiagnostics` attached to result with execution metadata
+3. Otherwise: `ProbabilityResolver` selects the provider based on mode (`rule_based`, `ml`, `ensemble`, `market_blend`)
+4. When home/away team profiles are both present, PA probabilities are resolved separately for each team
+5. Home field advantage applied via `_apply_hfa()` — sport-specific boost to home scoring probabilities
+6. `SimulationRunner` invokes the sport-specific simulator N times (default 5,000–10,000)
+7. If `market_blend` mode: post-simulation WP blended with devigged market line (`α × model + (1-α) × market`)
+8. Results aggregated: win probabilities, average scores, score distribution, event summary, variance metrics
+9. `SimulationDiagnostics` attached to result with execution metadata
+
+### Home Field Advantage
+
+Sport-specific HFA constants applied to home team scoring probabilities before simulation:
+
+| Sport | Constant | Boost Applied To | Historical Home Win % |
+|-------|----------|-----------------|----------------------|
+| MLB | `MLB_HFA_BOOST = 0.04` | walk/single (full) + HR (half) | ~54% |
+| NBA | `NBA_HFA_BOOST = 0.04` | 2pt/3pt make probability | ~58% |
+| NHL | `NHL_HFA_BOOST = 0.03` | goal probability | ~54% |
+| NCAAB | `NCAAB_HFA_BOOST = 0.035` | 2pt/3pt make probability | ~56% |
+| NFL | `NFL_HFA_BOOST = 0.03` | touchdown/field goal probability | ~57% |
 
 ### Simulation Diagnostics
 
@@ -279,13 +293,14 @@ Does not support lineup-aware mode.
 
 ## Probability Providers
 
-Four probability sources, selected via `probability_mode`:
+Five probability sources, selected via `probability_mode`:
 
 | Provider | Description |
 |----------|-------------|
 | **RuleBasedProvider** | League-average defaults adjusted by batter/pitcher features. |
 | **MLProvider** | Loads active trained model from registry, builds features, runs inference. |
 | **EnsembleProvider** | Weighted average of rule-based and ML predictions (configurable weights). |
+| **MarketBlend** | Runs ML simulation internally, then blends game-level WP with devigged market lines: `final = α × model + (1-α) × market`. Alpha is configurable (default 0.3). |
 | **Pitch-level** | Implicit — when mode is `pitch_level`, SimulationEngine routes to PitchLevelGameSimulator. |
 
 **No silent fallback.** If the requested provider fails (missing artifact, feature mismatch, inference error), the error propagates directly — there is no automatic degradation to a different provider.
@@ -350,21 +365,38 @@ Used by `ProbabilityResolver` to populate `SimulationDiagnostics.model_info`.
 
 Sport-agnostic `FeatureBuilder` routes to sport-specific builders. Features are configurable via DB-backed feature loadouts.
 
+### Shared Feature Infrastructure
+
+All sport-specific feature builders use `build_features_from_spec()` from `feature_vector.py` — a single implementation that converts `(feature_name, source_entity, source_key)` specs into normalized `FeatureVector` objects. MLB has its own `_build_from_spec()` with additional rate-stat clamping logic.
+
 ### MLB Features
 
+**Game-level features (92 total):**
+- Home team (30) + Away team (30): batting composites, plate discipline, quality of contact, raw counts, derived ratios
+- Starter pitcher (10): `home_starter_k_rate`, `home_starter_bb_rate`, `home_starter_era`, `home_starter_whip`, `home_starter_avg_ip` (× 2 sides)
+- Market probability (2): `market_home_wp`, `market_away_wp` (devigged Pinnacle closing lines)
+
 **Plate-appearance features (28 total):**
-- Batter (15): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
-- Pitcher (13): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
+- Batter (15): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, plate discipline percentages and ratios
+- Pitcher (13): team-level proxy for the same metrics
 
-**Game-level features (60 total):**
-- Home (30) + Away (30): Each side exposes 30 metrics from `_GAME_METRIC_KEYS`:
-  - Derived composites (8): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug
-  - Raw plate discipline (4): z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct
-  - Raw quality of contact (3): avg_exit_velo, hard_hit_pct, barrel_pct
-  - Raw counts (10): total_pitches, balls_in_play, hard_hit_count, barrel_count, zone_pitches, zone_swings, zone_contact, outside_pitches, outside_swings, outside_contact
-  - Derived ratios (5): zone_swing_rate, chase_rate, zone_contact_rate, outside_contact_rate, plate_discipline_index
+### NBA Features (22 total)
+- Home (10) + Away (10): off_rating, def_rating, pace, efg_pct, ts_pct, tov_pct, orb_pct, ft_rate, fg3_pct, ast_pct
+- Market probability (2): market_home_wp, market_away_wp
 
-Feature names are prefixed with `home_` or `away_` (e.g., `home_contact_rate`, `away_barrel_rate`).
+### NHL Features (16 total)
+- Home (7) + Away (7): xgoals_for, xgoals_against, corsi_pct, fenwick_pct, shooting_pct, save_pct, pdo
+- Market probability (2): market_home_wp, market_away_wp
+
+### NCAAB Features (24 total)
+- Home (11) + Away (11): off/def four factors (efg_pct, tov_pct, orb_pct, ft_rate × off/def), pace, ratings
+- Market probability (2): market_home_wp, market_away_wp
+
+### NFL Features (26 total)
+- Home (12) + Away (12): epa_per_play, pass_epa, rush_epa, total_epa, total_wpa, success_rate, pass/rush_success_rate, explosive_play_rate, avg_cpoe, avg_air_yards, avg_yac
+- Market probability (2): market_home_wp, market_away_wp
+
+Feature names are prefixed with `home_` or `away_` (e.g., `home_contact_rate`, `away_epa_per_play`).
 
 ### Feature Configuration
 
@@ -380,9 +412,9 @@ End-to-end flow: data → features → train → evaluate → register. Training
 
 1. `POST /api/analytics/train` creates an `AnalyticsTrainingJob` record and dispatches the Celery task
 2. `_execute_training()` converts the DB-backed `AnalyticsFeatureConfig` (JSONB array of `{name, enabled, weight}`) into a `{feat_name: {enabled, weight}}` dict and passes it through the pipeline
-3. `load_training_data()` — handled by `app.tasks._training_helpers` (the SSOT for DB-backed training data loading):
-   - **Game model:** queries `MLBGameAdvancedStats` + `SportsGame` for games in the date range, builds rolling home/away team profiles
-   - **PA model:** queries `MLBPlayerAdvancedStats` for player stats in the date range, builds rolling batter profiles paired with opposing team profiles, derives PA outcome labels heuristically from Statcast metrics (whiff rate, barrel rate, exit velocity, hard-hit rate, swing rates)
+3. `load_training_data()` — handled by `app.tasks._training_data` (the SSOT for DB-backed training data loading):
+   - **Game model (all sports):** queries sport-specific advanced stats (e.g., `MLBGameAdvancedStats`, `NBAGameAdvancedStats`) + `SportsGame` for games in the date range, builds rolling home/away team profiles. MLB also includes starter pitcher profiles and market probability from closing lines. NBA, NHL, NCAAB, and NFL include market probability.
+   - **PA model (MLB only):** queries `MLBPlayerAdvancedStats` for player stats, builds rolling batter profiles paired with opposing team profiles, derives PA outcome labels from Statcast metrics
 4. `build_dataset()` — `DatasetBuilder` → `FeatureBuilder.build_features(config=...)` → `_apply_config()` filters disabled features and applies weights from the linked loadout
 5. `train_test_split()` — sklearn split (configurable, default 80/20)
 6. `train_model()` — fits sklearn model (gradient_boosting default; also random_forest, xgboost)
@@ -530,7 +562,7 @@ See [API — Simulator](api.md#simulator) for full request/response documentatio
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/experiments` | Create experiment suite (parameter sweep across algorithms, windows, splits, loadouts) |
+| POST | `/experiments` | Create experiment suite (parameter sweep across algorithms, windows, splits, loadouts, probability modes, blend alphas) |
 | GET | `/experiments` | List experiment suites |
 | GET | `/experiments/{id}` | Suite detail with variant leaderboard |
 | POST | `/experiments/{id}/promote/{variant_id}` | Activate winning variant's model |
