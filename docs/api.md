@@ -847,7 +847,9 @@ List teams with game counts.
       "leagueCode": "NBA",
       "gamesCount": 45,
       "colorLightHex": "#FDB927",
-      "colorDarkHex": "#552583"
+      "colorDarkHex": "#552583",
+      "colorSecondaryLightHex": "#552583",
+      "colorSecondaryDarkHex": "#FDB927"
     }
   ],
   "total": 30
@@ -2851,6 +2853,8 @@ interface OddsEntry {
 
 ### NHL Player Stats
 
+Both `nhlSkaters` and `nhlGoalies` arrays are sorted by time-on-ice descending. `savePercentage` is a decimal (0.935 = 93.5%) — multiply by 100 for display.
+
 ```typescript
 interface NHLSkaterStat {
   team: string;
@@ -2874,7 +2878,7 @@ interface NHLGoalieStat {
   shotsAgainst: number | null;
   saves: number | null;
   goalsAgainst: number | null;
-  savePercentage: number | null;
+  savePercentage: number | null;  // decimal, e.g. 0.935 (NOT percentage)
   rawStats: object;
 }
 ```
