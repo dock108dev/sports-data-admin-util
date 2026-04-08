@@ -55,6 +55,14 @@ BASELINE_HIGH_DANGER_RATE = 0.25  # fraction of shots that are high-danger
 BASELINE_HIGH_DANGER_GOAL_PCT = 0.15  # scoring rate on high-danger chances
 
 # ---------------------------------------------------------------------------
+# Home ice advantage
+# ---------------------------------------------------------------------------
+# NHL home teams win ~54% of games historically. A 3% relative boost on
+# goal probability produces ~2-3% WP shift.
+
+NHL_HFA_BOOST = 0.03
+
+# ---------------------------------------------------------------------------
 # Feature-builder baselines (superset used for normalization)
 # ---------------------------------------------------------------------------
 
@@ -88,6 +96,9 @@ FEATURE_BASELINES: dict[str, float] = {
     # Game-state baselines
     "period": 2.0,
     "score_diff": 0.0,
+    # Market probability baselines
+    "home_wp": 0.50,
+    "away_wp": 0.50,
 }
 
 # ---------------------------------------------------------------------------

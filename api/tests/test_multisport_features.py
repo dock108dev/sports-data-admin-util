@@ -40,7 +40,7 @@ class TestNBAFeatureBuilder:
         assert "home_def_rating" in names
         assert "away_off_rating" in names
         assert "away_pace" in names  # should be present even if 0.0
-        assert len(names) == 20  # 10 home + 10 away
+        assert len(names) == 22  # 10 home + 10 away + 2 market
 
     def test_game_model_type_works(self):
         profiles = self._make_profiles(
@@ -48,7 +48,7 @@ class TestNBAFeatureBuilder:
         )
         builder = NBAFeatureBuilder()
         vec = builder.build_features(profiles, "game")
-        assert vec.size == 20
+        assert vec.size == 22
 
     def test_normalizes_against_baselines(self):
         builder = NBAFeatureBuilder()
@@ -62,7 +62,7 @@ class TestNBAFeatureBuilder:
         builder = NBAFeatureBuilder()
         vec = builder.build_features({}, "possession")
         assert all(v == 0.0 for v in vec.to_array())
-        assert vec.size == 20
+        assert vec.size == 22
 
     def test_returns_feature_vector_instance(self):
         builder = NBAFeatureBuilder()
@@ -114,12 +114,12 @@ class TestNHLFeatureBuilder:
         assert "home_xgoals_for" in names
         assert "home_corsi_pct" in names
         assert "away_save_pct" in names
-        assert len(names) == 14  # 7 home + 7 away
+        assert len(names) == 16  # 7 home + 7 away + 2 market
 
     def test_game_model_type_works(self):
         builder = NHLFeatureBuilder()
         vec = builder.build_features(self._make_profiles(), "game")
-        assert vec.size == 14
+        assert vec.size == 16
 
     def test_normalizes_against_baselines(self):
         builder = NHLFeatureBuilder()
@@ -133,7 +133,7 @@ class TestNHLFeatureBuilder:
         builder = NHLFeatureBuilder()
         vec = builder.build_features({}, "shot")
         assert all(v == 0.0 for v in vec.to_array())
-        assert vec.size == 14
+        assert vec.size == 16
 
     def test_returns_feature_vector_instance(self):
         builder = NHLFeatureBuilder()
@@ -171,12 +171,12 @@ class TestNCAABFeatureBuilder:
         assert "home_off_efg_pct" in names
         assert "home_def_tov_pct" in names
         assert "away_off_ft_rate" in names
-        assert len(names) == 22  # 11 home + 11 away
+        assert len(names) == 24  # 11 home + 11 away + 2 market
 
     def test_game_model_type_works(self):
         builder = NCAABFeatureBuilder()
         vec = builder.build_features(self._make_profiles(), "game")
-        assert vec.size == 22
+        assert vec.size == 24
 
     def test_normalizes_against_baselines(self):
         builder = NCAABFeatureBuilder()
@@ -190,7 +190,7 @@ class TestNCAABFeatureBuilder:
         builder = NCAABFeatureBuilder()
         vec = builder.build_features({}, "possession")
         assert all(v == 0.0 for v in vec.to_array())
-        assert vec.size == 22
+        assert vec.size == 24
 
     def test_returns_feature_vector_instance(self):
         builder = NCAABFeatureBuilder()
@@ -265,7 +265,7 @@ class TestFeatureBuilderRegistry:
             "away_profile": {"metrics": {}},
         }
         vec = fb.build_features("NBA", profiles, "possession")
-        assert vec.size == 20
+        assert vec.size == 22
 
     def test_config_applied_to_nba(self):
         fb = FeatureBuilder()

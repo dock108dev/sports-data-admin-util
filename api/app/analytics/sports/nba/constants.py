@@ -62,6 +62,14 @@ BASELINE_FT_PCT = 0.780
 BASELINE_AST_PCT = 0.600
 
 # ---------------------------------------------------------------------------
+# Home court advantage
+# ---------------------------------------------------------------------------
+# NBA home teams win ~58% of games historically. A 4% relative boost on
+# scoring event probabilities produces ~3-4% WP shift.
+
+NBA_HFA_BOOST = 0.04
+
+# ---------------------------------------------------------------------------
 # Feature-builder baselines (superset used for normalization)
 # ---------------------------------------------------------------------------
 
@@ -93,6 +101,9 @@ FEATURE_BASELINES: dict[str, float] = {
     "deflections": 15.0,
     "steals": 7.5,
     "blocks": 5.0,
+    # Market probability baselines
+    "home_wp": 0.50,
+    "away_wp": 0.50,
 }
 
 # ---------------------------------------------------------------------------

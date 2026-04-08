@@ -233,25 +233,75 @@ class SimulationEngine:
         result["blend_alpha"] = alpha
         result["probability_source"] = f"market_blend(a={alpha})"
 
-    @staticmethod
-    def _apply_hfa(game_context: dict[str, Any]) -> None:
+    def _apply_hfa(self, game_context: dict[str, Any]) -> None:
         """Apply home field advantage by boosting home offensive probabilities.
 
-        Boosts home walk/single rates by MLB_HFA_BOOST and HR rate by a
-        smaller factor (park effects). Away equivalents are decreased
+        Sport-aware: each sport boosts its own scoring event keys by the
+        appropriate HFA constant. Away equivalents are decreased
         symmetrically.
         """
-        from app.analytics.sports.mlb.constants import MLB_HFA_BOOST, MLB_HFA_HR_FACTOR
+        sport = self.sport.lower()
 
-        for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
-            probs = game_context.get(side)
-            if not probs:
-                continue
-            for key in ("walk_or_hbp_probability", "single_probability"):
-                if key in probs:
-                    probs[key] *= 1.0 + factor * MLB_HFA_BOOST
-            if "home_run_probability" in probs:
-                probs["home_run_probability"] *= 1.0 + factor * MLB_HFA_BOOST * MLB_HFA_HR_FACTOR
+        if sport == "mlb":
+            from app.analytics.sports.mlb.constants import MLB_HFA_BOOST, MLB_HFA_HR_FACTOR
+
+            for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
+                probs = game_context.get(side)
+                if not probs:
+                    continue
+                for key in ("walk_or_hbp_probability", "single_probability"):
+                    if key in probs:
+                        probs[key] *= 1.0 + factor * MLB_HFA_BOOST
+                if "home_run_probability" in probs:
+                    probs["home_run_probability"] *= 1.0 + factor * MLB_HFA_BOOST * MLB_HFA_HR_FACTOR
+
+        elif sport == "nba":
+            from app.analytics.sports.nba.constants import NBA_HFA_BOOST
+
+            boost_keys = ("two_pt_make_probability", "three_pt_make_probability")
+            for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
+                probs = game_context.get(side)
+                if not probs:
+                    continue
+                for key in boost_keys:
+                    if key in probs:
+                        probs[key] *= 1.0 + factor * NBA_HFA_BOOST
+
+        elif sport == "nhl":
+            from app.analytics.sports.nhl.constants import NHL_HFA_BOOST
+
+            boost_keys = ("goal_probability",)
+            for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
+                probs = game_context.get(side)
+                if not probs:
+                    continue
+                for key in boost_keys:
+                    if key in probs:
+                        probs[key] *= 1.0 + factor * NHL_HFA_BOOST
+
+        elif sport == "ncaab":
+            from app.analytics.sports.ncaab.constants import NCAAB_HFA_BOOST
+
+            boost_keys = ("two_pt_make_probability", "three_pt_make_probability")
+            for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
+                probs = game_context.get(side)
+                if not probs:
+                    continue
+                for key in boost_keys:
+                    if key in probs:
+                        probs[key] *= 1.0 + factor * NCAAB_HFA_BOOST
+
+        elif sport == "nfl":
+            from app.analytics.sports.nfl.constants import NFL_HFA_BOOST
+
+            boost_keys = ("touchdown_probability", "field_goal_probability")
+            for side, factor in (("home_probabilities", 1.0), ("away_probabilities", -1.0)):
+                probs = game_context.get(side)
+                if not probs:
+                    continue
+                for key in boost_keys:
+                    if key in probs:
+                        probs[key] *= 1.0 + factor * NFL_HFA_BOOST
 
     def _apply_probability_resolver(
         self,
@@ -360,9 +410,8 @@ class SimulationEngine:
             game_context["home_probabilities"] = sim_probs
             game_context["away_probabilities"] = sim_probs
 
-        # Apply home field advantage for MLB — boost home offensive probs
-        if self.sport.lower() == "mlb":
-            self._apply_hfa(game_context)
+        # Apply home field advantage — boost home offensive probs
+        self._apply_hfa(game_context)
 
         # Build diagnostics from resolver metadata
         diagnostics.executed_mode = prob_meta.get("executed_mode", mode)

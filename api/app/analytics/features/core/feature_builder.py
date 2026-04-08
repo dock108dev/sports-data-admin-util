@@ -34,6 +34,7 @@ _SPORT_FEATURE_BUILDERS: dict[str, tuple[str, str]] = {
     "nba": ("app.analytics.features.sports.nba_features", "NBAFeatureBuilder"),
     "nhl": ("app.analytics.features.sports.nhl_features", "NHLFeatureBuilder"),
     "ncaab": ("app.analytics.features.sports.ncaab_features", "NCAABFeatureBuilder"),
+    "nfl": ("app.analytics.features.sports.nfl_features", "NFLFeatureBuilder"),
 }
 
 
