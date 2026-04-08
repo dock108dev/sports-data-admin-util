@@ -185,6 +185,7 @@ def provider_request(
             provider=provider,
             endpoint=endpoint,
             league=league,
+            exc_info=True,
         )
         return None
     except Exception as exc:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -242,7 +245,7 @@ async def _revoke_suite_tasks(
             for tid in task_ids:
                 celery_app.control.revoke(tid, terminate=True)
         except Exception:
-            pass  # best-effort
+            logger.warning("experiment_task_revocation_failed", exc_info=True)
 
 
 @router.post("/experiments/{suite_id}/cancel", dependencies=[Depends(require_admin)])

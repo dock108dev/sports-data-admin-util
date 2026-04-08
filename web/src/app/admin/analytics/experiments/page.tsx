@@ -8,6 +8,7 @@ import {
   createExperimentSuite,
   type AvailableFeature,
   type FeatureLoadout,
+  type SimulationRequest,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
 import { type AnalyticsSport } from "@/lib/constants/analytics";
@@ -22,6 +23,15 @@ const ALGORITHMS = [
 
 const ROLLING_WINDOWS = [10, 15, 20, 25, 30, 40, 50, 60];
 const TEST_SPLITS = [0.1, 0.15, 0.2, 0.25, 0.3];
+
+const PROBABILITY_MODES: { value: NonNullable<SimulationRequest["probability_mode"]>; label: string }[] = [
+  { value: "ml", label: "ML" },
+  { value: "ensemble", label: "Ensemble" },
+  { value: "market_blend", label: "Market Blend" },
+  { value: "rule_based", label: "Rule Based" },
+];
+
+const BLEND_ALPHAS = [0.1, 0.2, 0.3, 0.5];
 
 export default function ExperimentsPage() {
   // Bump to trigger history refresh after a new experiment is submitted
@@ -70,6 +80,8 @@ function ExperimentBuilder({ sportCode, onSubmitted }: { sportCode: string; onSu
   const [selectedAlgorithms, setSelectedAlgorithms] = useState<Set<string>>(new Set(["gradient_boosting"]));
   const [selectedWindows, setSelectedWindows] = useState<Set<number>>(new Set([30]));
   const [selectedSplits, setSelectedSplits] = useState<Set<number>>(new Set([0.2]));
+  const [selectedProbModes, setSelectedProbModes] = useState<Set<NonNullable<SimulationRequest["probability_mode"]>>>(new Set(["ml"]));
+  const [selectedBlendAlphas, setSelectedBlendAlphas] = useState<Set<number>>(new Set([0.3]));
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
   const [tags, setTags] = useState("");
@@ -147,7 +159,8 @@ function ExperimentBuilder({ sportCode, onSubmitted }: { sportCode: string; onSu
   const featureComboEstimate = hasFeatureVariation
     ? Math.min(maxCombos, variableFeatures.length + 3 + Math.max(0, maxCombos - variableFeatures.length - 3))
     : 1;
-  const totalVariants = selectedAlgorithms.size * selectedWindows.size * selectedSplits.size * featureComboEstimate;
+  const blendAlphaDim = selectedProbModes.has("market_blend") ? Math.max(1, selectedBlendAlphas.size) : 1;
+  const totalVariants = selectedAlgorithms.size * selectedWindows.size * selectedSplits.size * selectedProbModes.size * blendAlphaDim * featureComboEstimate;
 
   function toggleSet<T>(set: Set<T>, value: T): Set<T> {
     const next = new Set(set);
@@ -180,6 +193,8 @@ function ExperimentBuilder({ sportCode, onSubmitted }: { sportCode: string; onSu
           algorithms: Array.from(selectedAlgorithms),
           rolling_windows: Array.from(selectedWindows),
           test_splits: Array.from(selectedSplits),
+          probability_modes: Array.from(selectedProbModes),
+          blend_alphas: selectedProbModes.has("market_blend") ? Array.from(selectedBlendAlphas) : undefined,
           date_start: dateStart || undefined,
           date_end: dateEnd || undefined,
           feature_grid: {
@@ -280,6 +295,48 @@ function ExperimentBuilder({ sportCode, onSubmitted }: { sportCode: string; onSu
             ))}
           </div>
         </div>
+
+        {/* Probability Modes */}
+        <div>
+          <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "0.35rem" }}>
+            Probability Modes
+          </label>
+          {PROBABILITY_MODES.map((m) => (
+            <label key={m.value} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+              <input
+                type="checkbox"
+                checked={selectedProbModes.has(m.value)}
+                onChange={() => setSelectedProbModes((prev) => toggleSet(prev, m.value))}
+              />
+              {m.label}
+            </label>
+          ))}
+        </div>
+
+        {/* Blend Alphas (visible when market_blend is selected) */}
+        {selectedProbModes.has("market_blend") && (
+          <div>
+            <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "0.35rem" }}>
+              Blend Alphas
+            </label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+              {BLEND_ALPHAS.map((a) => (
+                <button
+                  key={a}
+                  className={styles.btn}
+                  style={{
+                    fontSize: "0.75rem", padding: "2px 8px",
+                    background: selectedBlendAlphas.has(a) ? "#3b82f6" : "#f3f4f6",
+                    color: selectedBlendAlphas.has(a) ? "#fff" : "#374151",
+                  }}
+                  onClick={() => setSelectedBlendAlphas((prev) => toggleSet(prev, a))}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Feature Grid */}

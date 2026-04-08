@@ -251,6 +251,48 @@ async def _execute_batch_sim(
         for tid in team_history:
             team_history[tid].sort(key=lambda x: x[0])
 
+    # 3b. Pre-fetch market lines for market_blend mode
+    market_wp_by_game: dict[int, dict[str, float]] = {}
+    if probability_mode == "market_blend":
+        try:
+            async with sf() as mkt_db:
+                from app.db.odds import ClosingLine
+                from app.services.ev import american_to_implied, remove_vig
+                from sqlalchemy import select as sa_select
+
+                game_ids = [g.id for g in upcoming_games]
+                # Try closing lines first, fall back to current FairBet odds
+                cl_stmt = sa_select(ClosingLine).where(
+                    ClosingLine.game_id.in_(game_ids),
+                    ClosingLine.market_key.in_(["h2h", "moneyline"]),
+                )
+                cl_result = await mkt_db.execute(cl_stmt)
+                cls = cl_result.scalars().all()
+
+                lines_by_gid: dict[int, list] = defaultdict(list)
+                for cl in cls:
+                    lines_by_gid[cl.game_id].append(cl)
+
+                for gid, lines in lines_by_gid.items():
+                    home_price = away_price = None
+                    for cl in lines:
+                        sel = (cl.selection or "").lower()
+                        if "home" in sel:
+                            home_price = cl.price_american
+                        elif "away" in sel:
+                            away_price = cl.price_american
+                    if home_price is not None and away_price is not None:
+                        try:
+                            implied = [american_to_implied(home_price), american_to_implied(away_price)]
+                            true_probs = remove_vig(implied)
+                            market_wp_by_game[gid] = {"home_wp": true_probs[0], "away_wp": true_probs[1]}
+                        except (ValueError, ZeroDivisionError):
+                            logger.debug("market_line_parse_failed", extra={"game_id": gid}, exc_info=True)
+
+            logger.info("market_blend_prefetch", extra={"games_with_lines": len(market_wp_by_game)})
+        except Exception as exc:
+            logger.warning("market_blend_prefetch_failed", extra={"error": str(exc)})
+
     # 4. Run simulations for each upcoming game
     engine = SimulationEngine(sport)
     sim_results = []
@@ -277,8 +319,15 @@ async def _execute_batch_sim(
 
         game_context: dict = {"home_team": home_name, "away_team": away_name}
 
+        # For market_blend: pass market WP into game context
+        if probability_mode == "market_blend":
+            mkt = market_wp_by_game.get(game.id, {})
+            if mkt:
+                game_context["market_home_wp"] = mkt.get("home_wp")
+                game_context["market_away_wp"] = mkt.get("away_wp")
+
         has_profiles = bool(home_profile and away_profile)
-        use_ml = model_id or probability_mode in ("ml", "ensemble")
+        use_ml = model_id or probability_mode in ("ml", "ensemble", "market_blend")
         lineup_mode = False
         lineup_meta: dict | None = None
 

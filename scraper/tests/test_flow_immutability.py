@@ -32,7 +32,8 @@ class TestFlowImmutability:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = trigger_flow_for_game(1)
+        # Use .run() to bypass Celery task machinery (avoids test pollution)
+        result = trigger_flow_for_game.run(1)
 
         assert result["status"] == "skipped"
         assert result["reason"] == "immutable"
@@ -71,7 +72,7 @@ class TestFlowImmutability:
             "status": "success",
         }
 
-        result = trigger_flow_for_game(1)
+        result = trigger_flow_for_game.run(1)
 
         assert result["status"] == "success"
         mock_call_api.assert_called_once_with(1, "NBA")
@@ -90,7 +91,7 @@ class TestFlowImmutability:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = trigger_flow_for_game(1)
+        result = trigger_flow_for_game.run(1)
 
         assert result["status"] == "skipped"
         assert result["reason"] == "not_final"
@@ -105,6 +106,6 @@ class TestFlowImmutability:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = trigger_flow_for_game(999)
+        result = trigger_flow_for_game.run(999)
 
         assert result["status"] == "not_found"

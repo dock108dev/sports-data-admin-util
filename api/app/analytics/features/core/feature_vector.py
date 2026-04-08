@@ -66,3 +66,54 @@ class FeatureVector:
 
     def __repr__(self) -> str:
         return f"FeatureVector({len(self._order)} features)"
+
+
+def build_features_from_spec(
+    spec: list[tuple[str, str, str]],
+    profiles: dict[str, object],
+    baselines: dict[str, float],
+) -> FeatureVector:
+    """Build a FeatureVector from a (name, source, key) spec.
+
+    This is the single implementation used by all sport-specific feature
+    builders. Each profile value can be a flat dict, a dict with a
+    ``metrics`` key, or an object with a ``.metrics`` attribute.
+
+    Values are normalized against sport-specific baselines (ratio to
+    baseline). Missing values default to 0.0.
+
+    Args:
+        spec: List of ``(feature_name, source_entity, source_key)`` tuples.
+        profiles: Mapping of source entity names to profile data.
+        baselines: Sport-specific baseline values for normalization.
+
+    Returns:
+        ``FeatureVector`` with features in spec order.
+    """
+    features: dict[str, float] = {}
+    order: list[str] = []
+
+    for feat_name, entity_key, source_key in spec:
+        raw_profile = profiles.get(entity_key, {})
+
+        # Extract metrics dict from various profile shapes
+        if isinstance(raw_profile, dict):
+            metrics = raw_profile.get("metrics", raw_profile)
+        elif hasattr(raw_profile, "metrics"):
+            metrics = raw_profile.metrics  # type: ignore[union-attr]
+        else:
+            metrics = {}
+
+        val = metrics.get(source_key) if isinstance(metrics, dict) else None
+
+        if val is not None:
+            baseline = baselines.get(source_key, 1.0)
+            features[feat_name] = round(
+                float(val) / baseline if baseline else float(val), 4
+            )
+        else:
+            features[feat_name] = 0.0
+
+        order.append(feat_name)
+
+    return FeatureVector(features, feature_order=order)

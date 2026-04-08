@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -178,7 +181,7 @@ async def cancel_training_job(
             from app.celery_app import celery_app
             celery_app.control.revoke(job.celery_task_id, terminate=True)
         except Exception:
-            pass  # best-effort revocation
+            logger.warning("training_task_revocation_failed", exc_info=True)
 
     job.status = "failed"
     job.error_message = "Canceled by user"
@@ -286,7 +289,7 @@ async def delete_batch_simulate_job(
             from app.celery_app import celery_app
             celery_app.control.revoke(job.celery_task_id, terminate=True)
         except Exception:
-            pass  # best-effort
+            logger.warning("batch_sim_task_revocation_failed", exc_info=True)
 
     await db.delete(job)
     await db.flush()

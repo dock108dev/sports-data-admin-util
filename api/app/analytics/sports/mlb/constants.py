@@ -87,10 +87,11 @@ TRIPLE_FRACTION = 0.05
 # Home field advantage
 # ---------------------------------------------------------------------------
 
-# Relative boost applied to home team offensive probabilities (walk, single).
-# MLB home teams win ~54% of games historically; a 2.5% relative boost on
-# contact/walk events produces roughly +0.04 WP shift to match this.
-MLB_HFA_BOOST = 0.025
+# Relative boost applied to home team offensive probabilities.
+# MLB home teams win ~54% of games historically. A 4% relative boost on
+# walk/single events plus a smaller HR boost produces ~3-4% WP shift.
+MLB_HFA_BOOST = 0.04
+MLB_HFA_HR_FACTOR = 0.5  # HR boost is half of walk/single boost (park effects)
 
 # ---------------------------------------------------------------------------
 # Feature-builder baselines (superset used for normalization)
@@ -170,6 +171,11 @@ FEATURE_BASELINES: dict[str, float] = {
     "team_oaa": 0.0,
     "team_drs": 0.0,
     "team_defensive_value": 0.0,
+    # Starting pitcher game-level baselines
+    "innings_pitched": 5.5,
+    # Market probability baselines (neutral = 50/50)
+    "home_wp": 0.50,
+    "away_wp": 0.50,
 }
 
 # ---------------------------------------------------------------------------

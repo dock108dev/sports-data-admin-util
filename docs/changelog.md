@@ -2,7 +2,28 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-04-07] - Current
+## [2026-04-08] - Current
+
+### MLB Model Improvements
+
+- **Starting pitcher features:** Game model now includes 10 pitcher features (`home_starter_k_rate`, `home_starter_bb_rate`, `home_starter_era`, `home_starter_whip`, `home_starter_avg_ip` × 2 sides). Training data loads pitcher rolling profiles from `MLBPitcherGameStats`.
+- **Market probability features:** Game model includes `market_home_wp` and `market_away_wp` (devigged Pinnacle closing lines) as features. Available for all sports.
+- **Market blend probability mode:** New `probability_mode="market_blend"` blends ML simulation WP with devigged market lines: `final = α × model + (1-α) × market`. Alpha configurable (default 0.3).
+- **HFA fix:** MLB boost increased from 2.5% to 4%, now also boosts HR probability at half rate. Added sport-specific HFA for NBA (4%), NHL (3%), NCAAB (3.5%), NFL (3%).
+
+### Multi-Sport Model Training
+
+- **Training data loaders for all sports:** NBA, NHL, NCAAB, and NFL game models can now be trained via the experiment system. Each uses sport-specific advanced stats tables with rolling team profiles and market probability data.
+- **NFL feature builder:** Created `nfl_features.py` with 12 EPA/WPA metrics (26 total features with market). Registered in `FeatureBuilder`.
+- **Shared feature infrastructure:** `build_features_from_spec()` in `feature_vector.py` is the single implementation used by NBA, NHL, NCAAB, and NFL feature builders. Eliminated 4 duplicate `_build_from_spec` implementations.
+- **Experiment grid enhancements:** Experiment sweeps now support `probability_modes` and `blend_alphas` as grid dimensions.
+
+### Admin UI Enhancements
+
+- **Simulator controls:** Probability mode dropdown, blend alpha input, rolling window slider added to PregameSimulator.
+- **Experiment builder:** Probability modes multi-select and blend alpha options added to experiment creation form.
+
+## [2026-04-07]
 
 ### Phantom Game Detection & Cancellation
 

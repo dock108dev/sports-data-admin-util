@@ -47,6 +47,8 @@ class MlbDailyForecast(Base):
     predicted_home_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     predicted_away_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     probability_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model_home_wp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    blend_alpha: Mapped[float | None] = mapped_column(Float, nullable=True)
     sim_iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=5000)
     sim_wp_std_dev: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_std_home: Mapped[float | None] = mapped_column(Float, nullable=True)

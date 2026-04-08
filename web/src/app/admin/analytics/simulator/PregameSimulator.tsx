@@ -40,6 +40,11 @@ export function PregameSimulator() {
   const [teams, setTeams] = useState<MLBTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
 
+  // Probability mode & rolling window
+  const [probabilityMode, setProbabilityMode] = useState<SimulationRequest["probability_mode"]>("ml");
+  const [blendAlpha, setBlendAlpha] = useState(0.3);
+  const [rollingWindow, setRollingWindow] = useState(30);
+
   // Playoff exclusion
   const [excludePlayoffs, setExcludePlayoffs] = useState(false);
 
@@ -165,7 +170,9 @@ export function PregameSimulator() {
         home_team: homeTeam,
         away_team: awayTeam,
         iterations,
-        probability_mode: sportConfig.defaultProbMode as SimulationRequest["probability_mode"],
+        probability_mode: probabilityMode,
+        blend_alpha: probabilityMode === "market_blend" ? blendAlpha : undefined,
+        rolling_window: rollingWindow,
         exclude_playoffs: excludePlayoffs || undefined,
       };
       // Sportsbook lines
@@ -254,6 +261,49 @@ export function PregameSimulator() {
           <div className={styles.formGroup}>
             <label>Iterations</label>
             <input type="number" value={iterations} onChange={(e) => setIterations(Math.max(100, parseInt(e.target.value) || 100))} min={100} max={50000} />
+          </div>
+        </div>
+
+        {/* Probability Mode & Rolling Window */}
+        <div className={styles.formRow} style={{ marginTop: "0.75rem" }}>
+          <div className={styles.formGroup}>
+            <label>Probability Mode</label>
+            <select
+              value={probabilityMode}
+              onChange={(e) => setProbabilityMode(e.target.value as SimulationRequest["probability_mode"])}
+            >
+              <option value="ml">ML</option>
+              <option value="ensemble">Ensemble</option>
+              <option value="market_blend">Market Blend</option>
+              <option value="rule_based">Rule Based</option>
+            </select>
+          </div>
+          {probabilityMode === "market_blend" && (
+            <div className={styles.formGroup}>
+              <label>Blend Alpha</label>
+              <input
+                type="number"
+                value={blendAlpha}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  setBlendAlpha(Number.isNaN(n) ? 0.3 : Math.max(0, Math.min(1, n)));
+                }}
+                min={0}
+                max={1}
+                step={0.1}
+              />
+            </div>
+          )}
+          <div className={styles.formGroup}>
+            <label>Rolling Window: {rollingWindow}</label>
+            <input
+              type="range"
+              value={rollingWindow}
+              onChange={(e) => setRollingWindow(parseInt(e.target.value))}
+              min={10}
+              max={60}
+              step={5}
+            />
           </div>
         </div>
 

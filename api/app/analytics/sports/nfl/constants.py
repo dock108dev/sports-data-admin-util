@@ -67,6 +67,38 @@ BASELINE_CPOE = 0.0
 BASELINE_SACK_RATE = 0.065  # sacks per pass attempt
 
 # ---------------------------------------------------------------------------
+# Home field advantage
+# ---------------------------------------------------------------------------
+# NFL home teams win ~57% of games historically. A 3% relative boost on
+# scoring drive probabilities produces ~3-4% WP shift.
+
+NFL_HFA_BOOST = 0.03
+
+# ---------------------------------------------------------------------------
+# Feature-builder baselines (superset used for normalization)
+# ---------------------------------------------------------------------------
+
+FEATURE_BASELINES: dict[str, float] = {
+    # EPA metrics
+    "epa_per_play": BASELINE_EPA_PER_PLAY if BASELINE_EPA_PER_PLAY != 0 else 1.0,
+    "pass_epa": 0.0,
+    "rush_epa": 0.0,
+    "total_epa": 0.0,
+    # WPA
+    "total_wpa": 0.0,
+    # Success rates
+    "success_rate": BASELINE_SUCCESS_RATE,
+    "pass_success_rate": BASELINE_SUCCESS_RATE,
+    "rush_success_rate": BASELINE_SUCCESS_RATE,
+    # Explosive plays
+    "explosive_play_rate": BASELINE_EXPLOSIVE_RATE,
+    # Passing context
+    "avg_cpoe": BASELINE_CPOE if BASELINE_CPOE != 0 else 1.0,
+    "avg_air_yards": 8.0,  # league average ~8 air yards per attempt
+    "avg_yac": 5.5,  # league average ~5.5 YAC per completion
+}
+
+# ---------------------------------------------------------------------------
 # Simulation parameters
 # ---------------------------------------------------------------------------
 

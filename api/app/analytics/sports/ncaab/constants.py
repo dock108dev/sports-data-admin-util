@@ -66,6 +66,15 @@ BASELINE_FG3_RATE = 0.360
 BASELINE_FT_PCT = 0.700
 
 # ---------------------------------------------------------------------------
+# Home court advantage
+# ---------------------------------------------------------------------------
+# NCAAB home teams win ~56% of games historically (even higher in
+# conference play). A 3.5% relative boost on scoring event probabilities
+# produces ~3-4% WP shift.
+
+NCAAB_HFA_BOOST = 0.035
+
+# ---------------------------------------------------------------------------
 # Feature-builder baselines (superset used for normalization)
 # ---------------------------------------------------------------------------
 
@@ -96,6 +105,9 @@ FEATURE_BASELINES: dict[str, float] = {
     "points": 12.0,
     "rebounds": 5.0,
     "assists": 3.0,
+    # Market probability baselines
+    "home_wp": 0.50,
+    "away_wp": 0.50,
 }
 
 # ---------------------------------------------------------------------------

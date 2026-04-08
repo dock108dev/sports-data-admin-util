@@ -74,17 +74,24 @@ POST /api/analytics/simulate
   "away_team": "BOS",
   "iterations": 5000,
   "rolling_window": 30,
-  "probability_mode": "ml",
-  "home_lineup": [...],     // optional: exactly 9 batters
-  "away_lineup": [...],     // optional: exactly 9 batters
-  "home_starter": {...},    // optional
-  "away_starter": {...},    // optional
+  "probability_mode": "ml",           // "ml", "ensemble", "market_blend", "rule_based"
+  "blend_alpha": 0.3,                 // only for market_blend mode (0-1, model weight)
+  "home_lineup": [...],               // optional: exactly 9 batters (MLB only)
+  "away_lineup": [...],               // optional: exactly 9 batters (MLB only)
+  "home_starter": {...},              // optional (MLB only)
+  "away_starter": {...},              // optional (MLB only)
   "starter_innings": 6.0,
-  "sportsbook": {...}       // optional: moneylines for edge comparison
+  "sportsbook": {...}                 // optional: moneylines for edge comparison
 }
 ```
 
 **Read-only** (computation only, no data mutation). Works for any sport — lineup fields are MLB-only.
+
+**Probability modes:**
+- `ml` — ML model predictions (default)
+- `ensemble` — weighted blend of ML + rule-based
+- `market_blend` — ML simulation blended with devigged market lines (configurable alpha)
+- `rule_based` — league-average defaults adjusted by team profiles
 
 ### Public Simulator API (alternative)
 

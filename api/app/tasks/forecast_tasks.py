@@ -143,6 +143,8 @@ async def _upsert_forecasts(
                 "predicted_home_score": game_result.get("average_home_score"),
                 "predicted_away_score": game_result.get("average_away_score"),
                 "probability_source": game_result.get("probability_source"),
+                "model_home_wp": game_result.get("model_home_wp"),
+                "blend_alpha": game_result.get("blend_alpha"),
                 "sim_iterations": game_result.get("iterations", 5000),
                 "sim_wp_std_dev": game_result.get("home_wp_std_dev"),
                 "score_std_home": game_result.get("score_std_home"),

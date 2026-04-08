@@ -179,10 +179,32 @@ _BATTED_BALL_FEATURES: list[tuple[str, str, str]] = [
     ("batter_power_index", "batter", "power_index"),
 ]
 
+# Starting pitcher features for game-level model
+_STARTER_METRIC_KEYS = [
+    "k_rate",
+    "bb_rate",
+    "era",
+    "whip",
+    "innings_pitched",
+]
+
+# Market probability features for game-level model
+_MARKET_METRIC_KEYS = [
+    "home_wp",
+    "away_wp",
+]
+
 _GAME_FEATURES: list[tuple[str, str, str]] = [
     (f"{side}_{key}", side, key)
     for side in ("home", "away")
     for key in _GAME_METRIC_KEYS
+] + [
+    (f"{side}_starter_{key}", f"{side}_starter", key)
+    for side in ("home", "away")
+    for key in _STARTER_METRIC_KEYS
+] + [
+    (f"market_{key}", "market", key)
+    for key in _MARKET_METRIC_KEYS
 ]
 
 
@@ -222,7 +244,15 @@ class MLBFeatureBuilder:
         if model_type == "game":
             home = _extract_metrics(entity_profiles, "home_profile", "home")
             away = _extract_metrics(entity_profiles, "away_profile", "away")
-            return self.build_game_features(home, away)
+            home_starter = _extract_metrics(entity_profiles, "home_starter_profile", "home_starter")
+            away_starter = _extract_metrics(entity_profiles, "away_starter_profile", "away_starter")
+            market = _extract_metrics(entity_profiles, "market_profile", "market")
+            return self.build_game_features(
+                home, away,
+                home_starter=home_starter,
+                away_starter=away_starter,
+                market=market,
+            )
 
         if model_type == "pitch":
             batter = _extract_metrics(entity_profiles, "batter_profile", "batter")
@@ -329,17 +359,29 @@ class MLBFeatureBuilder:
         self,
         home_metrics: dict[str, Any],
         away_metrics: dict[str, Any],
+        home_starter: dict[str, Any] | None = None,
+        away_starter: dict[str, Any] | None = None,
+        market: dict[str, Any] | None = None,
     ) -> FeatureVector:
         """Build feature vector for game-level modeling.
 
         Args:
             home_metrics: Home team profile metrics dict.
             away_metrics: Away team profile metrics dict.
+            home_starter: Home starting pitcher rolling profile metrics.
+            away_starter: Away starting pitcher rolling profile metrics.
+            market: Market-derived probabilities (devigged Pinnacle lines).
 
         Returns:
-            ``FeatureVector`` with home_ and away_ prefixed features.
+            ``FeatureVector`` with home_, away_, starter_, and market_ features.
         """
-        sources = {"home": home_metrics, "away": away_metrics}
+        sources = {
+            "home": home_metrics,
+            "away": away_metrics,
+            "home_starter": home_starter or {},
+            "away_starter": away_starter or {},
+            "market": market or {},
+        }
         features, order = _build_from_spec(_GAME_FEATURES, sources)
         return FeatureVector(features, feature_order=order)
 
