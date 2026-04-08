@@ -8,6 +8,7 @@ import {
   createExperimentSuite,
   type AvailableFeature,
   type FeatureLoadout,
+  type SimulationRequest,
 } from "@/lib/api/analytics";
 import { SportSelector } from "@/components/admin/SportSelector";
 import { type AnalyticsSport } from "@/lib/constants/analytics";
@@ -23,7 +24,7 @@ const ALGORITHMS = [
 const ROLLING_WINDOWS = [10, 15, 20, 25, 30, 40, 50, 60];
 const TEST_SPLITS = [0.1, 0.15, 0.2, 0.25, 0.3];
 
-const PROBABILITY_MODES = [
+const PROBABILITY_MODES: { value: NonNullable<SimulationRequest["probability_mode"]>; label: string }[] = [
   { value: "ml", label: "ML" },
   { value: "ensemble", label: "Ensemble" },
   { value: "market_blend", label: "Market Blend" },
@@ -79,7 +80,7 @@ function ExperimentBuilder({ sportCode, onSubmitted }: { sportCode: string; onSu
   const [selectedAlgorithms, setSelectedAlgorithms] = useState<Set<string>>(new Set(["gradient_boosting"]));
   const [selectedWindows, setSelectedWindows] = useState<Set<number>>(new Set([30]));
   const [selectedSplits, setSelectedSplits] = useState<Set<number>>(new Set([0.2]));
-  const [selectedProbModes, setSelectedProbModes] = useState<Set<string>>(new Set(["ml"]));
+  const [selectedProbModes, setSelectedProbModes] = useState<Set<NonNullable<SimulationRequest["probability_mode"]>>>(new Set(["ml"]));
   const [selectedBlendAlphas, setSelectedBlendAlphas] = useState<Set<number>>(new Set([0.3]));
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");

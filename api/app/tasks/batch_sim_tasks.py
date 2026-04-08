@@ -287,7 +287,7 @@ async def _execute_batch_sim(
                             true_probs = remove_vig(implied)
                             market_wp_by_game[gid] = {"home_wp": true_probs[0], "away_wp": true_probs[1]}
                         except (ValueError, ZeroDivisionError):
-                            pass
+                            logger.debug("market_line_parse_failed", extra={"game_id": gid}, exc_info=True)
 
             logger.info("market_blend_prefetch", extra={"games_with_lines": len(market_wp_by_game)})
         except Exception as exc:

@@ -76,7 +76,6 @@ POST /api/analytics/simulate
   "rolling_window": 30,
   "probability_mode": "ml",           // "ml", "ensemble", "market_blend", "rule_based"
   "blend_alpha": 0.3,                 // only for market_blend mode (0-1, model weight)
-  "rolling_window": 30,
   "home_lineup": [...],               // optional: exactly 9 batters (MLB only)
   "away_lineup": [...],               // optional: exactly 9 batters (MLB only)
   "home_starter": {...},              // optional (MLB only)

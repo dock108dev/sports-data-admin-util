@@ -192,13 +192,16 @@ def _generate_variants(
 
     variants = []
     for algo, window, config_id, split, prob_mode, blend_alpha in combos:
+        # Skip blend_alpha variations for non-market_blend modes
+        if prob_mode != "market_blend" and blend_alpha != blend_alphas[0]:
+            continue
         variants.append({
             "algorithm": algo,
             "rolling_window": window,
             "feature_config_id": config_id,
             "test_split": split,
             "probability_mode": prob_mode,
-            "blend_alpha": blend_alpha,
+            "blend_alpha": blend_alpha if prob_mode == "market_blend" else None,
             "date_start": date_start,
             "date_end": date_end,
         })

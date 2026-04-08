@@ -225,6 +225,10 @@ class SimulationEngine:
         if market_home_wp is None:
             return
 
+        # Clamp inputs to valid ranges
+        alpha = max(0.0, min(1.0, alpha))
+        market_home_wp = max(0.0, min(1.0, market_home_wp))
+
         model_wp = result["home_win_probability"]
         blended = alpha * model_wp + (1 - alpha) * market_home_wp
         result["model_home_wp"] = round(model_wp, 4)

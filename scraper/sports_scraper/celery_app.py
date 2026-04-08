@@ -25,7 +25,7 @@ def _is_held() -> bool:
         r = _redis.from_url(settings.redis_url, decode_responses=True)
         return r.get(HOLD_KEY) == "1"
     except Exception:
-        logger.warning("hold_check_redis_unavailable — failing closed (tasks held)")
+        logger.warning("hold_check_redis_unavailable — failing closed (tasks held)", exc_info=True)
         return True
 
 # Canonical queue names — import these instead of using string literals

@@ -276,7 +276,7 @@ async def _load_mlb_game_training_data_impl(
                 true_probs = remove_vig(implied)
                 market_wp_by_game[game_id] = {"home_wp": true_probs[0], "away_wp": true_probs[1]}
             except (ValueError, ZeroDivisionError):
-                pass
+                logger.debug("market_line_parse_failed", exc_info=True)
 
     records = []
     skipped_insufficient = 0
@@ -477,7 +477,7 @@ async def _load_sport_game_training_data_impl(
                 true_probs = remove_vig(implied)
                 market_wp_by_game[game_id] = {"home_wp": true_probs[0], "away_wp": true_probs[1]}
             except (ValueError, ZeroDivisionError):
-                pass
+                logger.debug("market_line_parse_failed", exc_info=True)
 
     records = []
     skipped_insufficient = 0

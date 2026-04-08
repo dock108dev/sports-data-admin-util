@@ -121,7 +121,7 @@ export interface ExperimentSuiteRequest {
     rolling_windows?: number[];
     feature_config_ids?: (number | null)[];
     test_splits?: number[];
-    probability_modes?: string[];
+    probability_modes?: SimulationRequest["probability_mode"][];
     blend_alphas?: number[];
     date_start?: string;
     date_end?: string;
