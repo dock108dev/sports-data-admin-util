@@ -18,15 +18,15 @@ HOLD_KEY = "sports:tasks_held"
 def _is_held() -> bool:
     """Check whether the admin has held all scheduled task dispatch.
 
-    Fails closed: if Redis is unreachable, assume tasks are held to
-    prevent unintended execution during infrastructure issues.
+    Fails open: if Redis is unreachable, allow tasks to proceed so
+    ingestion is not silently blocked by transient infrastructure issues.
     """
     try:
         r = _redis.from_url(settings.redis_url, decode_responses=True)
         return r.get(HOLD_KEY) == "1"
     except Exception:
-        logger.warning("hold_check_redis_unavailable — failing closed (tasks held)", exc_info=True)
-        return True
+        logger.warning("hold_check_redis_unavailable — failing open (tasks proceed)", exc_info=True)
+        return False
 
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
