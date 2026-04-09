@@ -523,7 +523,8 @@ class DataGolfClient:
         position = _safe_int(str(pos_raw).lstrip("T")) if pos_raw else None
 
         # Score: in-play uses "current_score", stats uses "total"
-        total_score = _safe_int(p.get("current_score")) or _safe_int(p.get("total", p.get("total_score")))
+        _cs = _safe_int(p.get("current_score"))
+        total_score = _cs if _cs is not None else _safe_int(p.get("total", p.get("total_score")))
 
         return DGLeaderboardEntry(
             dg_id=int(p.get("dg_id", 0)),
