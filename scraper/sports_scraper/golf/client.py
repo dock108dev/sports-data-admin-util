@@ -567,6 +567,8 @@ def _safe_float(val: Any) -> float | None:
 def _safe_int(val: Any) -> int | None:
     if val is None or val == "" or val == "-":
         return None
+    if isinstance(val, str) and val.upper() == "E":
+        return 0
     try:
         return int(val)
     except (TypeError, ValueError):
