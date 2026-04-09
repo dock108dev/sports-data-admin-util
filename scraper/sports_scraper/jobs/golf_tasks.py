@@ -173,3 +173,22 @@ def golf_score_pools() -> dict:
             result = score_all_live_pools(session)
         tracker.summary_data = result
     return result
+
+
+@shared_task(
+    name="rescore_golf_pool",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def rescore_golf_pool(pool_id: int) -> dict:
+    """Rescore a single golf pool by ID (manual admin trigger)."""
+    from ..db import get_session
+    from ..golf.pool_scoring import score_single_pool
+    from ..services.job_runs import track_job_run
+
+    with track_job_run("rescore_golf_pool", ["PGA"]) as tracker:
+        with get_session() as session:
+            result = score_single_pool(session, pool_id)
+        tracker.summary_data = result
+    return result

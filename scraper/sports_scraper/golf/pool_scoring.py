@@ -625,3 +625,62 @@ def score_all_live_pools(session: Session) -> dict[str, Any]:
     if activation_events:
         result["activations"] = activation_events
     return result
+
+
+def score_single_pool(session: Session, pool_id: int) -> dict[str, Any]:
+    """Score a single pool by ID, regardless of status/scoring_enabled.
+
+    Used by the manual rescore admin action.
+    """
+    row = session.execute(
+        text("""
+            SELECT id, club_code, tournament_id, rules_json, status
+            FROM golf_pools
+            WHERE id = :pool_id
+        """),
+        {"pool_id": pool_id},
+    ).fetchone()
+
+    if not row:
+        logger.warning("golf_pool_rescore_not_found", pool_id=pool_id)
+        return {"error": "pool_not_found", "pool_id": pool_id}
+
+    pool = {
+        "id": row[0],
+        "club_code": row[1],
+        "tournament_id": row[2],
+        "rules_json": row[3],
+        "status": row[4],
+    }
+
+    entries = _load_entries_and_picks(session, pool_id)
+    if not entries:
+        logger.info("golf_pool_rescore_no_entries", pool_id=pool_id)
+        return {"pool_id": pool_id, "entries_scored": 0, "reason": "no_entries"}
+
+    leaderboard = _load_leaderboard(session, pool["tournament_id"])
+    if not leaderboard:
+        logger.info(
+            "golf_pool_rescore_no_leaderboard",
+            pool_id=pool_id,
+            tournament_id=pool["tournament_id"],
+        )
+        return {"pool_id": pool_id, "entries_scored": 0, "reason": "no_leaderboard"}
+
+    rules = _parse_rules(pool.get("rules_json"))
+    scored_entries = [_score_entry(e, leaderboard, rules) for e in entries]
+    ranked = _rank_entries(scored_entries)
+
+    for scored in ranked:
+        _upsert_entry_score(session, pool_id, scored)
+        _upsert_score_players(session, pool_id, scored["entry_id"], scored["picks"])
+
+    session.commit()
+
+    logger.info(
+        "golf_pool_rescored",
+        pool_id=pool_id,
+        club_code=pool["club_code"],
+        entries=len(ranked),
+    )
+    return {"pool_id": pool_id, "entries_scored": len(ranked)}
