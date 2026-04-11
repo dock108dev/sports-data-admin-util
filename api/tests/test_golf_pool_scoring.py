@@ -235,6 +235,55 @@ class TestRVCCScoring:
         # Only 4 active but some still have R2 pending — pending
         assert result.qualification_status == "pending"
 
+    def test_cut_players_never_in_counting_scores(self):
+        """Cut/WD/DQ players must never have counts_toward_total=True."""
+        scores = {
+            1: _gs(1, "P1", -10),
+            2: _gs(2, "P2", -8),
+            3: _gs(3, "P3", -6),
+            4: _gs(4, "P4", -4),
+            5: _gs(5, "P5", -2),
+            6: _gs(6, "P6", -15, status="cut"),   # Best score but cut
+            7: _gs(7, "P7", -12, status="wd"),     # Second best but WD
+        }
+        picks = [_pick(i, f"P{i}", i) for i in range(1, 8)]
+        result = score_entry(_entry(1, picks), scores, RVCC_RULES)
+
+        # Cut/WD players must never count even if they have the best scores
+        for p in result.picks:
+            if p.status in ("cut", "wd", "dq"):
+                assert p.counts_toward_total is False
+                assert p.is_dropped is True
+                assert p.made_cut is False
+
+        # Only 5 active players should count
+        counted = [p for p in result.picks if p.counts_toward_total]
+        assert len(counted) == 5
+        assert all(p.status == "active" for p in counted)
+
+    def test_cut_player_status_preserved_in_scored_pick(self):
+        """Scored picks must reflect the original cut/wd/dq status."""
+        scores = {
+            1: _gs(1, "P1", -5),
+            2: _gs(2, "P2", -3),
+            3: _gs(3, "P3", -1),
+            4: _gs(4, "P4", 0),
+            5: _gs(5, "P5", 1),
+            6: _gs(6, "P6", 3, status="cut", thru=0, r1=2, r2=4),
+            7: _gs(7, "P7", 5, status="wd"),
+        }
+        picks = [_pick(i, f"P{i}", i) for i in range(1, 8)]
+        result = score_entry(_entry(1, picks), scores, RVCC_RULES)
+
+        pick6 = next(p for p in result.picks if p.dg_id == 6)
+        assert pick6.status == "cut"
+        assert pick6.made_cut is False
+        assert pick6.thru == 0
+
+        pick7 = next(p for p in result.picks if p.dg_id == 7)
+        assert pick7.status == "wd"
+        assert pick7.made_cut is False
+
 
 # ---------------------------------------------------------------------------
 # Crestmont Scoring

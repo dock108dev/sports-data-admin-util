@@ -253,20 +253,31 @@ export default function PoolDetailPage() {
                   <td>{e.qualified_golfers_count}</td>
                   <td>{e.counted_golfers_count}</td>
                   <td>{e.qualification_status}</td>
-                  {(e.picks ?? []).map((pick) => (
-                    <td
-                      key={pick.dg_id}
-                      style={{
-                        fontSize: "0.8rem",
-                        opacity: pick.is_dropped ? 0.5 : 1,
-                        textDecoration: pick.is_dropped ? "line-through" : "none",
-                      }}
-                      title={`${pick.player_name} (${pick.status}) — ${pick.total_score != null ? pick.total_score : "N/A"}`}
-                    >
-                      {pick.player_name?.split(" ").pop() ?? "-"}
-                      {pick.total_score != null ? ` (${pick.total_score > 0 ? "+" : ""}${pick.total_score})` : ""}
-                    </td>
-                  ))}
+                  {(e.picks ?? []).map((pick) => {
+                    const isCut = pick.status === "cut" || (!pick.made_cut && pick.status !== "active" && pick.status !== "unknown");
+                    const isWd = pick.status === "wd";
+                    const isDq = pick.status === "dq";
+                    const isEliminated = isCut || isWd || isDq;
+                    const statusLabel = isCut ? "CUT" : isWd ? "WD" : isDq ? "DQ" : null;
+
+                    return (
+                      <td
+                        key={pick.dg_id}
+                        style={{
+                          fontSize: "0.8rem",
+                          opacity: pick.is_dropped ? 0.5 : 1,
+                          textDecoration: pick.is_dropped ? "line-through" : "none",
+                          color: isEliminated ? "#dc2626" : undefined,
+                        }}
+                        title={`${pick.player_name} (${pick.status}) — ${isEliminated ? statusLabel : pick.total_score != null ? pick.total_score : "N/A"}`}
+                      >
+                        {pick.player_name?.split(" ").pop() ?? "-"}
+                        {isEliminated
+                          ? ` (${statusLabel})`
+                          : pick.total_score != null ? ` (${pick.total_score > 0 ? "+" : ""}${pick.total_score})` : ""}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </AdminTable>

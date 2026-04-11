@@ -140,6 +140,83 @@ class TestDGModels:
 # ---------------------------------------------------------------------------
 
 
+class TestNormalizeStatus:
+    """Test _normalize_status merges status + position signals correctly."""
+
+    def test_explicit_cut_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("cut", None) == "cut"
+        assert _normalize_status("CUT", None) == "cut"
+
+    def test_mc_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("mc", None) == "cut"
+        assert _normalize_status("MC", None) == "cut"
+        assert _normalize_status("missed cut", None) == "cut"
+
+    def test_wd_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("wd", None) == "wd"
+        assert _normalize_status("WD", None) == "wd"
+        assert _normalize_status("w/d", None) == "wd"
+        assert _normalize_status("withdrew", None) == "wd"
+
+    def test_dq_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("dq", None) == "dq"
+        assert _normalize_status("DQ", None) == "dq"
+        assert _normalize_status("dsq", None) == "dq"
+        assert _normalize_status("disqualified", None) == "dq"
+
+    def test_active_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("active", None) == "active"
+        assert _normalize_status("active", "T4") == "active"
+
+    def test_missing_status_defaults_to_active(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("", None) == "active"
+        assert _normalize_status(None, None) == "active"
+
+    def test_position_mc_overrides_missing_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("", "MC") == "cut"
+        assert _normalize_status(None, "MC") == "cut"
+        assert _normalize_status("", "CUT") == "cut"
+
+    def test_position_mc_overrides_active_status(self):
+        """DataGolf sometimes returns status=active with pos=MC."""
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("active", "MC") == "cut"
+        assert _normalize_status("active", "CUT") == "cut"
+
+    def test_position_wd_overrides_missing_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("", "WD") == "wd"
+        assert _normalize_status(None, "WD") == "wd"
+
+    def test_position_dq_overrides_missing_status(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("", "DQ") == "dq"
+        assert _normalize_status(None, "DQ") == "dq"
+
+    def test_numeric_position_keeps_active(self):
+        from sports_scraper.golf.client import _normalize_status
+
+        assert _normalize_status("", "T4") == "active"
+        assert _normalize_status("active", "1") == "active"
+
+
 class TestClientHelpers:
     """Test the parsing helper functions in client.py."""
 
