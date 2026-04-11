@@ -119,21 +119,29 @@ export default function TournamentDetailPage() {
             <AdminTable
               headers={["Pos", "Player", "Total", "Today", "Thru", "R1", "R2", "R3", "R4", "SG Total", "Win Prob"]}
             >
-              {leaderboard.map((e) => (
-                <tr key={e.dg_id}>
-                  <td>{e.position ?? "-"}</td>
-                  <td>{e.player_name ?? "-"}</td>
-                  <td>{e.total_score ?? "-"}</td>
-                  <td>{e.today_score ?? "-"}</td>
-                  <td>{e.thru ?? "-"}</td>
-                  <td>{e.r1 ?? "-"}</td>
-                  <td>{e.r2 ?? "-"}</td>
-                  <td>{e.r3 ?? "-"}</td>
-                  <td>{e.r4 ?? "-"}</td>
-                  <td>{e.sg_total != null ? e.sg_total.toFixed(2) : "-"}</td>
-                  <td>{e.win_prob != null ? `${(e.win_prob * 100).toFixed(1)}%` : "-"}</td>
-                </tr>
-              ))}
+              {leaderboard.map((e) => {
+                const isCut = e.status === "cut";
+                const isWd = e.status === "wd";
+                const isDq = e.status === "dq";
+                const isEliminated = isCut || isWd || isDq;
+                const statusLabel = isCut ? "CUT" : isWd ? "WD" : isDq ? "DQ" : null;
+
+                return (
+                  <tr key={e.dg_id} style={isEliminated ? { color: "#999" } : undefined}>
+                    <td>{isEliminated ? statusLabel : e.position ?? "-"}</td>
+                    <td>{e.player_name ?? "-"}</td>
+                    <td>{e.total_score ?? "-"}</td>
+                    <td>{isEliminated ? "-" : e.today_score ?? "-"}</td>
+                    <td>{isEliminated ? statusLabel : e.thru ?? "-"}</td>
+                    <td>{e.r1 ?? "-"}</td>
+                    <td>{e.r2 ?? "-"}</td>
+                    <td>{e.r3 ?? "-"}</td>
+                    <td>{e.r4 ?? "-"}</td>
+                    <td>{e.sg_total != null ? e.sg_total.toFixed(2) : "-"}</td>
+                    <td>{e.win_prob != null ? `${(e.win_prob * 100).toFixed(1)}%` : "-"}</td>
+                  </tr>
+                );
+              })}
             </AdminTable>
           )}
         </AdminCard>

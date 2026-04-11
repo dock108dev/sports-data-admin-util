@@ -533,6 +533,11 @@ class DataGolfClient:
         if total_score is None and thru is not None and thru > 0:
             total_score = 0
 
+        # Determine status: use explicit field, but also detect cut/wd/dq from
+        # the position field (DataGolf sometimes uses "MC", "CUT", "WD", "DQ"
+        # in current_pos without setting the status field).
+        status = _normalize_status(p.get("status", ""), pos_raw)
+
         return DGLeaderboardEntry(
             dg_id=int(p.get("dg_id", 0)),
             player_name=p.get("player_name", ""),
@@ -550,7 +555,7 @@ class DataGolfClient:
             sg_app=_safe_float(p.get("sg_app")),
             sg_arg=_safe_float(p.get("sg_arg")),
             sg_putt=_safe_float(p.get("sg_putt")),
-            status=p.get("status", "active"),
+            status=status,
             win_prob=_safe_float(p.get("win", p.get("win_prob"))),
             top_5_prob=_safe_float(p.get("top_5")),
             top_10_prob=_safe_float(p.get("top_10")),
@@ -561,6 +566,47 @@ class DataGolfClient:
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
+# Position strings that indicate a missed cut
+_CUT_POSITIONS = frozenset({"mc", "cut"})
+_WD_POSITIONS = frozenset({"wd", "w/d"})
+_DQ_POSITIONS = frozenset({"dq", "dsq"})
+
+
+def _normalize_status(raw_status: str | None, pos_raw: Any) -> str:
+    """Derive a canonical player status from the status field and position.
+
+    DataGolf sometimes encodes cut/wd/dq only in ``current_pos`` (e.g. "MC",
+    "CUT", "WD") without setting the ``status`` field.  This function merges
+    both signals into one of: ``"active"``, ``"cut"``, ``"wd"``, ``"dq"``.
+    """
+    s = (raw_status or "").strip().lower()
+
+    # Normalise known synonyms from the status field itself
+    if s in ("cut", "mc", "missed cut"):
+        return "cut"
+    if s in ("wd", "w/d", "withdrew"):
+        return "wd"
+    if s in ("dq", "dsq", "disqualified"):
+        return "dq"
+    if s == "active":
+        # Explicit "active" — but position may override (API inconsistency)
+        pass
+    elif s:
+        # Unknown non-empty status — treat as active; position may still override
+        pass
+
+    # If the status field was empty/missing/active, check position for signals
+    if pos_raw is not None:
+        pos_str = str(pos_raw).strip().lower()
+        if pos_str in _CUT_POSITIONS:
+            return "cut"
+        if pos_str in _WD_POSITIONS:
+            return "wd"
+        if pos_str in _DQ_POSITIONS:
+            return "dq"
+
+    return "active"
 
 
 def _safe_float(val: Any) -> float | None:
