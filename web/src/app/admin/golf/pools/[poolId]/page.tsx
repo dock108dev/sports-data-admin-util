@@ -254,7 +254,7 @@ export default function PoolDetailPage() {
                   <td>{e.counted_golfers_count}</td>
                   <td>{e.qualification_status}</td>
                   {(e.picks ?? []).map((pick) => {
-                    const isCut = pick.status === "cut" || (!pick.made_cut && pick.status !== "active" && pick.status !== "unknown");
+                    const isCut = pick.status === "cut";
                     const isWd = pick.status === "wd";
                     const isDq = pick.status === "dq";
                     const isEliminated = isCut || isWd || isDq;

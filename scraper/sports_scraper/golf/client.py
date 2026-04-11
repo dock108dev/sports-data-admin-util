@@ -593,8 +593,8 @@ def _normalize_status(raw_status: str | None, pos_raw: Any) -> str:
         # Explicit "active" — but position may override (API inconsistency)
         pass
     elif s:
-        # Unknown non-empty status — keep it as-is
-        return s
+        # Unknown non-empty status — treat as active; position may still override
+        pass
 
     # If the status field was empty/missing/active, check position for signals
     if pos_raw is not None:
@@ -606,7 +606,7 @@ def _normalize_status(raw_status: str | None, pos_raw: Any) -> str:
         if pos_str in _DQ_POSITIONS:
             return "dq"
 
-    return s if s else "active"
+    return "active"
 
 
 def _safe_float(val: Any) -> float | None:
