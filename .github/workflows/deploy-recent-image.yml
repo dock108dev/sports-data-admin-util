@@ -57,6 +57,32 @@ jobs:
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
 
+            echo "Syncing active Caddy site block from repo..."
+            if [ ! -f "infra/Caddyfile" ]; then
+              echo "ERROR: infra/Caddyfile missing in repo checkout"
+              exit 1
+            fi
+
+            if [ ! -f "/etc/caddy/Caddyfile" ]; then
+              echo "ERROR: /etc/caddy/Caddyfile not found on server"
+              exit 1
+            fi
+
+            if ! sudo -n true 2>/dev/null; then
+              echo "ERROR: deploy user requires passwordless sudo for Caddy update commands."
+              echo "Grant NOPASSWD sudo for python3 (writing /etc/caddy/Caddyfile), caddy validate, and systemctl reload caddy."
+              exit 1
+            fi
+
+            sudo python3 infra/scripts/update_caddy_site_block.py \
+              infra/Caddyfile \
+              /etc/caddy/Caddyfile \
+              sda.dock108.dev
+
+            sudo caddy validate --config /etc/caddy/Caddyfile
+            sudo systemctl reload caddy
+            echo "Caddy reload complete."
+
             if [ ! -f "infra/.env" ]; then
               echo "ERROR: infra/.env file missing in $BASE_DIR"
               exit 1
