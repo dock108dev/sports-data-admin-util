@@ -264,13 +264,19 @@ jobs:
                 exit 1
               fi
 
-              python3 infra/scripts/update_caddy_site_block.py \
+              if ! sudo -n true 2>/dev/null; then
+                echo "ERROR: deploy user requires passwordless sudo for Caddy update commands."
+                echo "Grant NOPASSWD sudo for python3 (writing /etc/caddy/Caddyfile), caddy validate, and systemctl reload caddy."
+                exit 1
+              fi
+
+              sudo python3 infra/scripts/update_caddy_site_block.py \
                 infra/Caddyfile \
                 /etc/caddy/Caddyfile \
                 sda.dock108.dev
 
-              caddy validate --config /etc/caddy/Caddyfile
-              systemctl reload caddy
+              sudo caddy validate --config /etc/caddy/Caddyfile
+              sudo systemctl reload caddy
               echo "Caddy reload complete."
             else
               echo "No infra/Caddyfile change detected; skipping Caddy update."
