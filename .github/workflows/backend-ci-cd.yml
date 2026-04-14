@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -128,7 +128,7 @@ jobs:
           python -m compileall api/app scraper/sports_scraper
       - uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
