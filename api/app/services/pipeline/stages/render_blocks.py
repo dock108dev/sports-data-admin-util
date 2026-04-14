@@ -57,7 +57,11 @@ from .render_helpers import (
     inject_overtime_mention,
 )
 from .render_prompts import build_block_prompt, build_game_flow_pass_prompt
-from .render_validation import cleanup_pbp_artifacts, validate_block_narrative
+from .render_validation import (
+    cleanup_pbp_artifacts,
+    validate_all_blocks,
+    validate_block_narrative,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,83 +205,110 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     if is_blowout:
         output.add_log("Processing blowout game with compressed narratives")
 
-    # Build prompt and call OpenAI
+    # Build prompt and call OpenAI with retry on validation failure
     prompt = build_block_prompt(blocks, game_context, pbp_events)
+    league_code = game_context.get("sport", "NBA")
 
-    try:
-        # Estimate tokens: ~200 per block for 2-4 sentences
-        max_tokens = 200 * len(blocks)
-
-        response_json = await asyncio.to_thread(
-            openai_client.generate,
-            prompt=prompt,
-            temperature=0.5,  # Higher for more natural prose variation
-            max_tokens=max_tokens,
-        )
-        response_data = json.loads(response_json)
-
-    except json.JSONDecodeError as e:
-        # Fail fast
-        raise ValueError(f"OpenAI returned invalid JSON: {e}") from e
-
-    except Exception as e:
-        # Fail fast
-        raise ValueError(f"OpenAI call failed: {e}") from e
-
-    # Extract narratives from response
-    block_items = response_data.get("blocks", [])
-    if not block_items and isinstance(response_data, list):
-        block_items = response_data
-
-    output.add_log(f"Got {len(block_items)} narratives from OpenAI")
-
-    # Build lookup by block index
-    narrative_lookup: dict[int, str] = {}
-    for item in block_items:
-        idx = item.get("i")
-        narrative = item.get("n", "")
-        if idx is not None:
-            narrative_lookup[idx] = narrative
-
-    # Apply narratives to blocks with validation
+    max_attempts = 2
+    initial_temperature = 0.5
+    retry_temperature = 0.3
     all_errors: list[str] = []
     all_warnings: list[str] = []
     total_words = 0
 
-    for block in blocks:
-        block_idx = block["block_index"]
-        narrative = narrative_lookup.get(block_idx, "")
+    for attempt in range(max_attempts):
+        temperature = initial_temperature if attempt == 0 else retry_temperature
+        if attempt > 0:
+            output.add_log(
+                f"Retrying generation (attempt {attempt + 1}/{max_attempts}) "
+                f"with temperature={temperature}",
+                level="warning",
+            )
 
-        if not narrative or not narrative.strip():
-            # Fail fast
-            raise ValueError(f"Block {block_idx}: No narrative from AI")
+        try:
+            max_tokens = 200 * len(blocks)
 
-        # Clean up any raw PBP artifacts from the narrative
-        narrative = cleanup_pbp_artifacts(narrative)
+            response_json = await asyncio.to_thread(
+                openai_client.generate,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            response_data = json.loads(response_json)
 
-        # Validate
-        errors, warnings = validate_block_narrative(narrative, block_idx)
-        all_errors.extend(errors)
-        all_warnings.extend(warnings)
+        except json.JSONDecodeError as e:
+            if attempt < max_attempts - 1:
+                output.add_log(f"OpenAI returned invalid JSON (attempt {attempt + 1}): {e}", level="warning")
+                continue
+            raise ValueError(f"OpenAI returned invalid JSON: {e}") from e
 
-        # If hard errors, fail fast
-        if errors:
-            raise ValueError(f"Block {block_idx} validation failed: {errors}")
+        except Exception as e:
+            raise ValueError(f"OpenAI call failed: {e}") from e
 
-        # Check and inject overtime mention if needed
-        league_code = game_context.get("sport", "NBA")
-        ot_info = detect_overtime_info(block, league_code)
-        if ot_info["enters_overtime"]:
-            if not check_overtime_mention(narrative, ot_info, league_code):
-                narrative = inject_overtime_mention(narrative, ot_info, league_code)
-                output.add_log(
-                    f"Block {block_idx}: Injected {ot_info['ot_label']} mention",
-                    level="warning",
-                )
-                all_warnings.append(f"Block {block_idx}: Injected overtime mention")
+        # Extract narratives from response
+        block_items = response_data.get("blocks", [])
+        if not block_items and isinstance(response_data, list):
+            block_items = response_data
 
-        block["narrative"] = narrative
-        total_words += len(narrative.split())
+        output.add_log(f"Got {len(block_items)} narratives from OpenAI (attempt {attempt + 1})")
+
+        # Build lookup by block index
+        narrative_lookup: dict[int, str] = {}
+        for item in block_items:
+            idx = item.get("i")
+            narrative = item.get("n", "")
+            if idx is not None:
+                narrative_lookup[idx] = narrative
+
+        # Apply narratives to blocks with validation
+        all_errors = []
+        all_warnings = []
+        total_words = 0
+        validation_failed = False
+
+        for block in blocks:
+            block_idx = block["block_index"]
+            narrative = narrative_lookup.get(block_idx, "")
+
+            if not narrative or not narrative.strip():
+                if attempt < max_attempts - 1:
+                    output.add_log(f"Block {block_idx}: No narrative from AI, will retry", level="warning")
+                    validation_failed = True
+                    break
+                raise ValueError(f"Block {block_idx}: No narrative from AI")
+
+            narrative = cleanup_pbp_artifacts(narrative)
+
+            role = block.get("role")
+            errors, warnings = validate_block_narrative(narrative, block_idx, role)
+            all_errors.extend(errors)
+            all_warnings.extend(warnings)
+
+            if errors:
+                if attempt < max_attempts - 1:
+                    output.add_log(
+                        f"Block {block_idx} validation failed (attempt {attempt + 1}): {errors}",
+                        level="warning",
+                    )
+                    validation_failed = True
+                    break
+                raise ValueError(f"Block {block_idx} validation failed: {errors}")
+
+            ot_info = detect_overtime_info(block, league_code)
+            if ot_info["enters_overtime"]:
+                if not check_overtime_mention(narrative, ot_info, league_code):
+                    narrative = inject_overtime_mention(narrative, ot_info, league_code)
+                    output.add_log(
+                        f"Block {block_idx}: Injected {ot_info['ot_label']} mention",
+                        level="warning",
+                    )
+                    all_warnings.append(f"Block {block_idx}: Injected overtime mention")
+
+            block["narrative"] = narrative
+            total_words += len(narrative.split())
+
+        if not validation_failed:
+            break
 
     output.add_log(f"Total word count: {total_words}")
 
@@ -321,7 +352,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         "blocks": blocks,
         "block_count": len(blocks),
         "total_words": total_words,
-        "openai_calls": 2,  # Initial render + flow pass
+        "openai_calls": (attempt + 1) + 1,  # Render attempts + flow pass
         "errors": all_errors,
         "warnings": all_warnings,
         # Pass through

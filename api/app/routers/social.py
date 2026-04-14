@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from ..config import get_settings
 from ..db import AsyncSession, get_db
 from ..db.social import TeamSocialAccount, TeamSocialPost
 from ..db.sports import SportsGame, SportsLeague, SportsTeam
@@ -146,6 +147,9 @@ async def list_social_posts(
     - team_id: Filter by team abbreviation (e.g., "GSW", "LAL")
     - start_date/end_date: Filter by posted_at timestamp
     """
+    if not get_settings().social_embeds_enabled:
+        return SocialPostListResponse(posts=[], total=0)
+
     stmt = (
         select(TeamSocialPost)
         .options(selectinload(TeamSocialPost.team))
@@ -279,6 +283,9 @@ async def get_posts_for_game(
     session: AsyncSession = Depends(get_db),
 ) -> SocialPostListResponse:
     """Get all social posts for a specific game, sorted by posted_at."""
+    if not get_settings().social_embeds_enabled:
+        return SocialPostListResponse(posts=[], total=0)
+
     stmt = (
         select(TeamSocialPost)
         .options(selectinload(TeamSocialPost.team))

@@ -37,6 +37,7 @@ from .block_types import (
     MIN_WORDS_PER_BLOCK,
     SemanticRole,
 )
+from .content_pipeline import ContentDecision, run_content_pipeline
 from .embedded_tweets import load_and_attach_embedded_tweets
 
 logger = logging.getLogger(__name__)
@@ -425,24 +426,55 @@ async def execute_validate_blocks(
     # Calculate total words
     total_words = sum(len(b.get("narrative", "").split()) for b in blocks)
 
-    # Determine pass/fail
-    # Errors are hard failures, warnings are acceptable
-    passed = len(all_errors) == 0
+    # Determine pass/fail for structural validation (Stage 1)
+    structural_passed = len(all_errors) == 0
 
-    if passed:
-        output.add_log(f"VALIDATE_BLOCKS PASSED with {len(all_warnings)} warnings")
+    if structural_passed:
+        output.add_log(f"Stage 1 (Structural) PASSED with {len(all_warnings)} warnings")
     else:
         output.add_log(
-            f"VALIDATE_BLOCKS FAILED with {len(all_errors)} errors, {len(all_warnings)} warnings",
+            f"Stage 1 (Structural) FAILED with {len(all_errors)} errors, {len(all_warnings)} warnings",
             level="error",
         )
 
     output.add_log(f"Total word count: {total_words}")
 
+    # Run 4-stage content validation pipeline (Stages 1-4)
+    game_context = stage_input.game_context or {}
+    sport = game_context.get("sport", "NBA")
+
+    output.add_log("Running 4-stage content validation pipeline")
+    pipeline_result = run_content_pipeline(
+        blocks=blocks,
+        game_context=game_context,
+        sport=sport,
+        retry_count=0,
+    )
+
+    output.add_log(
+        f"Stage 2 (Factual): claims_checked={pipeline_result.factual_result.claims_checked}, "
+        f"claims_failed={pipeline_result.factual_result.claims_failed}, "
+        f"bleed_detections={pipeline_result.factual_result.bleed_detections}"
+    )
+    output.add_log(
+        f"Stage 3 (Quality): composite_score={pipeline_result.quality_result.composite_score:.1f}"
+    )
+    output.add_log(
+        f"Stage 4 (Decision): {pipeline_result.decision.value}"
+    )
+
+    if pipeline_result.is_fallback:
+        output.add_log("Content fell back to template-based summary", level="warning")
+        blocks = pipeline_result.blocks
+        total_words = sum(len(b.get("narrative", "").split()) for b in blocks)
+
+    # Overall pass considers both structural validation and content pipeline
+    passed = structural_passed and pipeline_result.decision != ContentDecision.FALLBACK
+
     # After validation passes, attach embedded tweets (social enhancement)
     embedded_tweet_selection = None
     if passed:
-        league_code = stage_input.game_context.get("sport", "NBA") if stage_input.game_context else "NBA"
+        league_code = game_context.get("sport", "NBA")
         blocks, embedded_tweet_selection = await _attach_embedded_tweets(
             session, game_id, blocks, output, league_code=league_code
         )
@@ -454,6 +486,11 @@ async def execute_validate_blocks(
         "total_words": total_words,
         "errors": all_errors,
         "warnings": all_warnings,
+        # Content pipeline results
+        "content_pipeline": pipeline_result.to_dict(),
+        "quality_score": pipeline_result.quality_result.composite_score,
+        "content_decision": pipeline_result.decision.value,
+        "is_fallback": pipeline_result.is_fallback,
         # Embedded tweet metadata
         "embedded_tweet_selection": (
             embedded_tweet_selection.to_dict() if embedded_tweet_selection else None

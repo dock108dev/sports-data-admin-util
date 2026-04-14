@@ -4,19 +4,19 @@ version = "0.1.0"
 description = "Sports data ingestion service for Scroll Down Sports."
 requires-python = ">=3.11"
 dependencies = [
-  "pydantic>=2.8.0,<3.0.0",
+  "pydantic>=2.12.5,<3.0.0",
   "pydantic-settings>=2.5.0,<3.0.0",
-  "sqlalchemy>=2.0.0,<3.0.0",
+  "sqlalchemy>=2.0.49,<3.0.0",
   "psycopg[binary]>=3.2.0,<4.0.0",
   "alembic>=1.13.0,<2.0.0",
   "httpx>=0.27.0,<0.29.0",
   "beautifulsoup4>=4.12.0,<5.0.0",
-  "lxml>=5.3.0,<7.0.0",
+  "lxml>=6.0.4,<7.0.0",
   "structlog>=24.1.0,<26.0.0",
-  "celery>=5.4.0,<6.0.0",
-  "redis>=5.0.0,<8.0.0",
-  "tenacity>=9.0.0,<10.0.0",
-  "playwright>=1.47.0,<2.0.0",
+  "celery>=5.6.3,<6.0.0",
+  "redis>=7.4.0,<8.0.0",
+  "tenacity>=9.1.4,<10.0.0",
+  "playwright>=1.58.0,<2.0.0",
   "nflreadpy>=0.1.5",
   # Transitive dep — pinned for CVE fix (ReDoS in AdlLexer/GUID matching)
   "pygments>=2.20.0",
@@ -24,12 +24,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "black>=24.8.0,<27.0.0",
-  "pytest>=8.3.2,<10.0.0",
+  "black>=26.3.1,<27.0.0",
+  "pytest>=9.0.3,<10.0.0",
   "ruff>=0.7.0,<0.16.0",
   "pytest-cov>=4.1.0,<8.0.0",
-  "mypy>=1.11.0,<2.0.0",
-  "types-beautifulsoup4>=4.12.0,<5.0.0",
+  "mypy>=1.20.0,<2.0.0",
+  "types-beautifulsoup4>=4.12.0.20250516,<5.0.0",
 ]
 
 [tool.pytest.ini_options]

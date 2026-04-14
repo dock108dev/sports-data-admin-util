@@ -16,7 +16,13 @@ from ...db.scraper import SportsScrapeRun
 from ...db.social import TeamSocialPost
 from ...db.sports import GameStatus, SportsGame, SportsLeague, SportsTeam
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
+from ...services.data_freshness import (
+    compute_staleness_state,
+    get_data_updated_at,
+    get_source_delay_seconds,
+)
 from ...services.game_status import compute_status_flags
+from ...services.score_masking import UserScorePreferences, should_mask_score
 from ...utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
 from .schemas import GameSummary, JobResponse, LiveSnapshot, ScrapeRunConfig, SocialPostEntry
 
@@ -55,7 +61,7 @@ def apply_game_filters(
 ) -> Select[tuple[SportsGame]]:
     """Apply filtering options for list endpoints."""
     if not include_canceled:
-        _EXCLUDED_STATUSES = (GameStatus.canceled.value, GameStatus.postponed.value)
+        _EXCLUDED_STATUSES = (GameStatus.cancelled.value, GameStatus.postponed.value)
         stmt = stmt.where(SportsGame.status.notin_(_EXCLUDED_STATUSES))
 
     if final_only:
@@ -225,6 +231,7 @@ def build_preview_context(
 def summarize_game(
     game: SportsGame,
     has_flow: bool | None = None,
+    score_prefs: UserScorePreferences | None = None,
 ) -> GameSummary:
     """Summarize game fields for list responses. Fails fast if core data missing.
 
@@ -232,6 +239,7 @@ def summarize_game(
         game: The game to summarize
         has_flow: Whether the game has a flow in SportsGameFlow table.
             If None, defaults to False.
+        score_prefs: User score preferences for masking. None means no masking.
     """
     if not game.league:
         raise ValueError(f"Game {game.id} missing league")
@@ -294,6 +302,29 @@ def summarize_game(
 
     date_section = classify_date_section(game.game_date)
 
+    masked = should_mask_score(
+        score_prefs,
+        game.id,
+        league_code,
+        game.home_team.abbreviation,
+        game.away_team.abbreviation,
+    )
+    home_score = None if masked else game.home_score
+    away_score = None if masked else game.away_score
+
+    if masked and live_snapshot is not None:
+        live_snapshot = LiveSnapshot(
+            period_label=live_snapshot.period_label,
+            time_label=live_snapshot.time_label,
+            home_score=None,
+            away_score=None,
+            current_period=live_snapshot.current_period,
+            game_clock=live_snapshot.game_clock,
+        )
+
+    data_updated_at = get_data_updated_at(game.last_ingested_at, game.last_scraped_at)
+    data_staleness_state = compute_staleness_state(game.status, data_updated_at)
+
     return GameSummary(
         id=game.id,
         league_code=league_code,
@@ -301,8 +332,8 @@ def summarize_game(
         status=game.status,
         home_team=game.home_team.name,
         away_team=game.away_team.name,
-        home_score=game.home_score,
-        away_score=game.away_score,
+        home_score=home_score,
+        away_score=away_score,
         current_period=current_period,
         game_clock=game_clock_val,
         has_boxscore=has_boxscore,
@@ -336,6 +367,9 @@ def summarize_game(
         current_period_label=current_period_label,
         live_snapshot=live_snapshot,
         date_section=date_section,
+        data_updated_at=data_updated_at,
+        data_source_delay_seconds=get_source_delay_seconds(),
+        data_staleness_state=data_staleness_state.value,
     )
 
 

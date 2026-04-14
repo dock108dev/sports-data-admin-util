@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from ...config import get_settings
 from ...db import AsyncSession, get_db
 from ...db.flow import SportsGameFlow
 from ...db.mlb_advanced import (
@@ -40,14 +41,21 @@ from ...db.sports import (
     SportsPlayerBoxscore,
     SportsTeamBoxscore,
 )
+from ...dependencies.score_preferences import resolve_score_preferences
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
+from ...services.data_freshness import (
+    compute_staleness_state,
+    get_data_updated_at,
+    get_source_delay_seconds,
+)
 from ...services.derived_metrics import compute_derived_metrics
 from ...services.game_status import compute_status_flags
 from ...services.odds_table import build_odds_table
 from ...services.period_labels import period_label, time_label
 from ...services.play_tiers import classify_all_tiers, group_tier3_plays
+from ...services.score_masking import UserScorePreferences, should_mask_score
 from ...services.stat_annotations import compute_team_annotations
 from ...services.team_colors import get_matchup_colors
 from .common import (
@@ -59,6 +67,13 @@ from .common import (
     serialize_player_stat,
     serialize_team_stat,
 )
+from .game_detail_advanced import (
+    serialize_mlb_advanced,
+    serialize_nba_advanced,
+    serialize_ncaab_advanced,
+    serialize_nfl_advanced,
+    serialize_nhl_advanced,
+)
 from .game_helpers import (
     build_preview_context,
     normalize_score,
@@ -68,13 +83,6 @@ from .game_helpers import (
     serialize_social_posts,
 )
 from .nhl_helpers import compute_nhl_data_health
-from .game_detail_advanced import (
-    serialize_mlb_advanced,
-    serialize_nba_advanced,
-    serialize_ncaab_advanced,
-    serialize_nfl_advanced,
-    serialize_nhl_advanced,
-)
 from .schemas import (
     GameDetailResponse,
     GameMeta,
@@ -150,7 +158,11 @@ async def get_game_preview_score(
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
-async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> GameDetailResponse:
+async def get_game(
+    game_id: int,
+    score_prefs: UserScorePreferences | None = Depends(resolve_score_preferences),
+    session: AsyncSession = Depends(get_db),
+) -> GameDetailResponse:
     result = await session.execute(
         select(SportsGame)
         .options(
@@ -331,6 +343,29 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             game_clock=meta_game_clock,
         )
 
+    masked = should_mask_score(
+        score_prefs,
+        game.id,
+        league_code or "UNKNOWN",
+        game.home_team.abbreviation if game.home_team else None,
+        game.away_team.abbreviation if game.away_team else None,
+    )
+    detail_home_score = None if masked else game.home_score
+    detail_away_score = None if masked else game.away_score
+
+    if masked and meta_live_snapshot is not None:
+        meta_live_snapshot = LiveSnapshot(
+            period_label=meta_live_snapshot.period_label,
+            time_label=meta_live_snapshot.time_label,
+            home_score=None,
+            away_score=None,
+            current_period=meta_live_snapshot.current_period,
+            game_clock=meta_live_snapshot.game_clock,
+        )
+
+    detail_data_updated_at = get_data_updated_at(game.last_ingested_at, game.last_scraped_at)
+    detail_staleness_state = compute_staleness_state(game.status, detail_data_updated_at)
+
     meta = GameMeta(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -341,8 +376,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         away_team=game.away_team.name if game.away_team else "Unknown",
         home_team_id=game.home_team.id if game.home_team else None,
         away_team_id=game.away_team.id if game.away_team else None,
-        home_score=game.home_score,
-        away_score=game.away_score,
+        home_score=detail_home_score,
+        away_score=detail_away_score,
         status=game.status,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,
@@ -375,9 +410,17 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         read_eligible=status_flags["read_eligible"],
         current_period_label=meta_period_label,
         live_snapshot=meta_live_snapshot,
+        data_updated_at=detail_data_updated_at,
+        data_source_delay_seconds=get_source_delay_seconds(),
+        data_staleness_state=detail_staleness_state.value,
     )
 
-    social_posts_entries = serialize_social_posts(game, game.social_posts or [])
+    cfg = get_settings()
+    social_posts_entries = (
+        serialize_social_posts(game, game.social_posts or [])
+        if cfg.social_embeds_enabled
+        else []
+    )
 
     derived = compute_derived_metrics(game, game.odds)
     raw_payloads = {
@@ -472,6 +515,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ncaab_player_advanced_stats=ncaab_player_advanced_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
+        social_embeds_enabled=cfg.social_embeds_enabled,
         plays=plays_entries,
         grouped_plays=grouped_plays,
         derived_metrics=derived,

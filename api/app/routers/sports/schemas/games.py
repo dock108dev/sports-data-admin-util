@@ -92,6 +92,9 @@ class GameSummary(BaseModel):
     current_period_label: str | None = Field(None, alias="currentPeriodLabel")
     live_snapshot: LiveSnapshot | None = Field(None, alias="liveSnapshot")
     date_section: str | None = Field(None, alias="dateSection")
+    data_updated_at: datetime | None = Field(None, alias="dataUpdatedAt")
+    data_source_delay_seconds: int | None = Field(None, alias="dataSourceDelaySeconds")
+    data_staleness_state: str | None = Field(None, alias="dataStalenessState")
 
 
 class GameListResponse(BaseModel):
@@ -159,6 +162,9 @@ class GameMeta(BaseModel):
     read_eligible: bool | None = Field(None, alias="readEligible")
     current_period_label: str | None = Field(None, alias="currentPeriodLabel")
     live_snapshot: LiveSnapshot | None = Field(None, alias="liveSnapshot")
+    data_updated_at: datetime | None = Field(None, alias="dataUpdatedAt")
+    data_source_delay_seconds: int | None = Field(None, alias="dataSourceDelaySeconds")
+    data_staleness_state: str | None = Field(None, alias="dataStalenessState")
 
 
 class GameDetailResponse(BaseModel):
@@ -220,6 +226,7 @@ class GameDetailResponse(BaseModel):
     )
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
+    social_embeds_enabled: bool = Field(True, alias="socialEmbedsEnabled")
     plays: list[PlayEntry]
     grouped_plays: list[TieredPlayGroup] | None = Field(None, alias="groupedPlays")
     derived_metrics: dict[str, Any] = Field(..., alias="derivedMetrics")

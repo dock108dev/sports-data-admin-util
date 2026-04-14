@@ -68,6 +68,11 @@ class Settings(BaseSettings):
         default=60, alias="FAIRBET_ODDS_SNAPSHOT_TTL_SECONDS"
     )
 
+    # Social Embeds — disabled for v1 release (see docs/research/social-embed-reliability.md)
+    social_embeds_enabled: bool = Field(
+        default=False, alias="SOCIAL_EMBEDS_ENABLED"
+    )
+
     # API Authentication
     # Required in production - all endpoints except /healthz require this key
     api_key: str | None = Field(default=None, alias="API_KEY")

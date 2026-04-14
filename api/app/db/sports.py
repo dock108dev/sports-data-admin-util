@@ -42,12 +42,14 @@ class GameStatus(str, Enum):
     """
 
     scheduled = "scheduled"
-    pregame = "pregame"  # Within pregame_window_hours of game_date
+    pregame = "pregame"
+    delayed = "delayed"
     live = "live"
+    suspended = "suspended"
     final = "final"
-    archived = "archived"  # Data complete, flows generated, >7 days old
+    archived = "archived"
     postponed = "postponed"
-    canceled = "canceled"
+    cancelled = "cancelled"
 
 
 class SportsLeague(Base):
@@ -368,17 +370,14 @@ class SportsGame(Base):
 
     @property
     def is_final(self) -> bool:
-        """Check if game is in a final state."""
         return self.status == GameStatus.final.value
 
     @property
     def is_archived(self) -> bool:
-        """Check if game has been archived (terminal state)."""
         return self.status == GameStatus.archived.value
 
     @property
     def is_active(self) -> bool:
-        """Check if game is in an active lifecycle state (not terminal)."""
         return self.status in (
             GameStatus.scheduled.value,
             GameStatus.pregame.value,
@@ -386,6 +385,32 @@ class SportsGame(Base):
             GameStatus.final.value,
         )
 
+
+class GameStateLog(Base):
+    """Audit trail for game state transitions."""
+
+    __tablename__ = "game_state_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    from_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    to_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transitioned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        Index("idx_state_log_game_time", "game_id", "transitioned_at"),
+    )
 
 
 class SportsTeamBoxscore(Base):

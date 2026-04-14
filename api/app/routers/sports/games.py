@@ -19,6 +19,8 @@ from ...db.sports import (
     SportsPlayerBoxscore,
     SportsTeamBoxscore,
 )
+from ...dependencies.score_preferences import resolve_score_preferences
+from ...services.score_masking import UserScorePreferences
 from .game_detail import router as detail_router
 from .game_helpers import (
     apply_game_filters,
@@ -36,6 +38,7 @@ router.include_router(detail_router)
 
 @router.get("/games", response_model=GameListResponse)
 async def list_games(
+    score_prefs: UserScorePreferences | None = Depends(resolve_score_preferences),
     session: AsyncSession = Depends(get_db),
     league: list[str] | None = Query(None),
     season: int | None = Query(None),
@@ -213,7 +216,10 @@ async def list_games(
         games_with_flow = set()
 
     next_offset = offset + limit if offset + limit < total else None
-    summaries = [summarize_game(game, has_flow=game.id in games_with_flow) for game in games]
+    summaries = [
+        summarize_game(game, has_flow=game.id in games_with_flow, score_prefs=score_prefs)
+        for game in games
+    ]
 
     return GameListResponse(
         games=summaries,

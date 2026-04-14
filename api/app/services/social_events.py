@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
+from ..config import get_settings
 from ..db.social import TeamSocialPost
 
 logger = logging.getLogger(__name__)
@@ -242,6 +243,9 @@ def build_social_events(
     Returns:
         List of (timestamp, event_payload) tuples
     """
+    if not get_settings().social_embeds_enabled:
+        return []
+
     events: list[tuple[datetime, dict[str, Any]]] = []
     dropped_count = 0
 

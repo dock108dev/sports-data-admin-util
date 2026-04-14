@@ -1,12 +1,13 @@
 """Validation and cleanup utilities for RENDER_BLOCKS stage.
 
-Contains constants for forbidden words, prohibited patterns, and functions
-for validating narratives against style constraints.
+Contains constants for forbidden words, prohibited patterns, sentence budget
+constraints per block role, and functions for validating narratives.
 """
 
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from .block_types import MAX_WORDS_PER_BLOCK, MIN_WORDS_PER_BLOCK
 
@@ -71,6 +72,19 @@ PBP_ARTIFACT_PATTERNS = [
 
 # Maximum regeneration attempts for play coverage recovery
 MAX_REGENERATION_ATTEMPTS = 2
+
+# Sentence budget constraints per semantic role
+# (min_sentences, max_sentences)
+SENTENCE_BUDGETS: dict[str, tuple[int, int]] = {
+    "SETUP": (1, 4),
+    "MOMENTUM_SHIFT": (2, 5),
+    "RESPONSE": (1, 4),
+    "DECISION_POINT": (2, 5),
+    "RESOLUTION": (1, 4),
+}
+
+# Default for roles not in the budget map
+DEFAULT_SENTENCE_BUDGET: tuple[int, int] = (1, 5)
 
 
 def validate_style_constraints(
@@ -157,12 +171,14 @@ def cleanup_pbp_artifacts(narrative: str) -> str:
 def validate_block_narrative(
     narrative: str,
     block_idx: int,
+    role: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Validate a single block narrative.
 
     Args:
         narrative: The generated narrative text
         block_idx: Block index for error messages
+        role: Semantic role (SETUP, MOMENTUM_SHIFT, etc.) for sentence budget check
 
     Returns:
         Tuple of (errors, warnings)
@@ -197,4 +213,85 @@ def validate_block_narrative(
     errors.extend(style_errors)
     warnings.extend(style_warnings)
 
+    # Check sentence budget if role is provided
+    if role:
+        budget_warnings = validate_sentence_budget(narrative, block_idx, role)
+        warnings.extend(budget_warnings)
+
     return errors, warnings
+
+
+def _count_sentences(text: str) -> int:
+    """Count sentences in narrative text.
+
+    Splits on sentence-ending punctuation (.!?) followed by whitespace
+    or end-of-string. Handles abbreviations and decimals reasonably.
+    """
+    if not text or not text.strip():
+        return 0
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text.strip()) if s.strip()]
+    return len(sentences)
+
+
+def validate_sentence_budget(
+    narrative: str,
+    block_idx: int,
+    role: str,
+) -> list[str]:
+    """Validate that a narrative respects its role's sentence budget.
+
+    Args:
+        narrative: The generated narrative text
+        block_idx: Block index for error messages
+        role: Semantic role (SETUP, MOMENTUM_SHIFT, etc.)
+
+    Returns:
+        List of warning messages for budget violations
+    """
+    warnings: list[str] = []
+
+    if not narrative or not narrative.strip():
+        return warnings
+
+    sentence_count = _count_sentences(narrative)
+    min_s, max_s = SENTENCE_BUDGETS.get(role, DEFAULT_SENTENCE_BUDGET)
+
+    if sentence_count < min_s:
+        warnings.append(
+            f"Block {block_idx} ({role}): Too few sentences "
+            f"({sentence_count}, min: {min_s})"
+        )
+
+    if sentence_count > max_s:
+        warnings.append(
+            f"Block {block_idx} ({role}): Too many sentences "
+            f"({sentence_count}, max: {max_s})"
+        )
+
+    return warnings
+
+
+def validate_all_blocks(
+    blocks: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    """Validate all block narratives including sentence budgets.
+
+    Args:
+        blocks: List of block dicts with narrative and role fields
+
+    Returns:
+        Tuple of (all_errors, all_warnings) across all blocks
+    """
+    all_errors: list[str] = []
+    all_warnings: list[str] = []
+
+    for block in blocks:
+        block_idx = block.get("block_index", 0)
+        narrative = block.get("narrative", "")
+        role = block.get("role")
+
+        errors, warnings = validate_block_narrative(narrative, block_idx, role)
+        all_errors.extend(errors)
+        all_warnings.extend(warnings)
+
+    return all_errors, all_warnings
