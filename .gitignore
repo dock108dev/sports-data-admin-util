@@ -73,3 +73,6 @@ web/next-env.d.ts
 
 # Game data
 game_data/*
+
+# AIDLC working directory
+.aidlc/*
