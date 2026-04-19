@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.models.core.model_interface import BaseModel
-from app.analytics.sports.nhl.constants import DEFAULT_EVENT_PROBS, SHOT_EVENTS
+from app.analytics.sports.nhl.constants import DEFAULT_EVENT_PROBS
 
 FEATURE_KEYS = [
     "shooting_pct",

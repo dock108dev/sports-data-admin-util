@@ -63,11 +63,11 @@ def to_et_date_str(dt: datetime) -> str:
 class RealtimeEvent:
     """Server -> client event envelope."""
 
-    type: str           # game_patch | pbp_append | fairbet_patch
+    type: str           # patch | phase_change | game_patch | pbp_append | fairbet_patch
     channel: str
     seq: int
     payload: dict[str, Any]
-    boot_epoch: int = 0
+    boot_epoch: str = ""
     ts: int = field(default_factory=lambda: int(time.time()))
 
     def to_dict(self) -> dict[str, Any]:

@@ -26,6 +26,7 @@ from ...db import AsyncSession
 from ...db.pipeline import GamePipelineRun, GamePipelineStage
 from ...db.sports import SportsGame, SportsPlayerBoxscore
 from ...utils.datetime_utils import now_utc
+from .metrics import increment_published, record_stage_duration
 from .models import PipelineStage, StageInput, StageOutput, StageResult
 from .stages import (
     execute_analyze_drama,
@@ -394,6 +395,12 @@ class PipelineExecutor:
             # Calculate duration
             end_time = datetime.utcnow()
             duration = (end_time - start_time).total_seconds()
+
+            # Emit OTel metrics
+            sport = game_context.get("sport", "UNKNOWN")
+            record_stage_duration(stage.value, sport, duration * 1000)
+            if stage == PipelineStage.FINALIZE_MOMENTS:
+                increment_published(sport)
 
             # Check if pipeline is complete
             if stage == PipelineStage.FINALIZE_MOMENTS:

@@ -10,7 +10,14 @@ from celery.schedules import crontab
 from .config import settings
 from .db import db_models, get_session
 from .logging import logger
+from .odds.metrics import init_odds_metrics
+from .telemetry import init_telemetry
 from .utils.datetime_utils import now_utc
+
+# Must be called before Celery app creation so CeleryInstrumentor hooks in.
+# No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+init_telemetry(environment=settings.environment)
+init_odds_metrics()
 
 HOLD_KEY = "sports:tasks_held"
 
@@ -97,7 +104,11 @@ app = Celery(
     "sports-data-scraper",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["sports_scraper.jobs.tasks", "sports_scraper.jobs.session_health_task"],
+    include=[
+        "sports_scraper.jobs.tasks",
+        "sports_scraper.jobs.session_health_task",
+        "sports_scraper.jobs.grader_task",
+    ],
 )
 # Set the default Task class for ALL tasks including @shared_task.
 # task_cls in the constructor only applies to @app.task, not @shared_task.
@@ -130,6 +141,8 @@ app.conf.task_routes = {
     "live_orchestrator_tick": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_odds_mainline": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_odds_props": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    # Narrative quality grader (dispatched by API finalize_moments stage)
+    "grade_flow_task": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
 }
 # Daily pipeline schedule (all times US Eastern / UTC during EST):
 #
@@ -271,6 +284,16 @@ _scheduled_tasks = {
     "mlb-forecast-refresh-hourly": {
         "task": "refresh_mlb_forecasts",
         "schedule": crontab(minute=5),  # :05 past each hour (avoids :00 pile-up)
+        "options": {"queue": "celery", "routing_key": "celery", "expires": 3300},
+    },
+    # === Pipeline coverage report (daily 06:00 UTC) ===
+    # Writes a PipelineCoverageReport row summarising FINAL games vs flows for
+    # yesterday, broken down by sport.  Re-running overwrites the same-day row.
+    # Runs after ingestion (03:30 UTC) and flow sweep (07:00 EST / 12:00 UTC)
+    # have had time to settle, but early enough for the admin morning review.
+    "pipeline-coverage-report-daily-6am-utc": {
+        "task": "generate_pipeline_coverage_report",
+        "schedule": crontab(minute=0, hour=6),  # 06:00 UTC
         "options": {"queue": "celery", "routing_key": "celery", "expires": 3300},
     },
 }

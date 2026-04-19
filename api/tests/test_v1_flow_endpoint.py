@@ -78,20 +78,25 @@ def _mock_game(
 def _mock_flow(game_id: int = 42) -> MagicMock:
     flow = MagicMock()
     flow.game_id = game_id
-    flow.moments_json = [
+    flow.moments_json = []
+    flow.blocks_json = [
         {
-            "play_ids": [1],
-            "explicitly_narrated_play_ids": [1],
-            "period": 1,
-            "start_clock": "12:00",
-            "end_clock": "11:30",
+            "block_index": 0,
+            "role": "OPENING",
+            "moment_indices": [0],
+            "period_start": 1,
+            "period_end": 1,
             "score_before": [0, 0],
             "score_after": [2, 0],
-            "narrative": "Game started.",
-            "cumulative_box_score": None,
+            "play_ids": [1],
+            "key_play_ids": [1],
+            "narrative": "Game started strong.",
+            "mini_box": None,
+            "embedded_social_post_id": None,
+            "start_clock": "12:00",
+            "end_clock": "11:30",
         }
     ]
-    flow.blocks_json = None
     flow.validated_at = datetime(2026, 1, 1, tzinfo=UTC)
     return flow
 
@@ -126,12 +131,13 @@ class TestConsumerResponseShape:
 
         assert "gameId" in data
         assert data["gameId"] == 42
-        assert "flow" in data
+        assert "blocks" in data
         assert "plays" in data
 
         # Consumer shape must NOT expose pipeline internals
         assert "validationPassed" not in data
         assert "validationErrors" not in data
+        assert "flow" not in data
 
     def test_score_is_score_object(self) -> None:
         mock_db = AsyncMock()
@@ -151,10 +157,10 @@ class TestConsumerResponseShape:
         resp = client.get("/api/v1/games/42/flow")
         data = resp.json()
 
-        moment = data["flow"]["moments"][0]
-        assert isinstance(moment["scoreBefore"], dict)
-        assert moment["scoreBefore"] == {"home": 0, "away": 0}
-        assert moment["scoreAfter"] == {"home": 2, "away": 0}
+        block = data["blocks"][0]
+        assert isinstance(block["scoreBefore"], dict)
+        assert block["scoreBefore"] == {"home": 0, "away": 0}
+        assert block["scoreAfter"] == {"home": 2, "away": 0}
 
     def test_includes_team_metadata(self) -> None:
         mock_db = AsyncMock()

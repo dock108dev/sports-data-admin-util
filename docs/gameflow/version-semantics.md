@@ -29,7 +29,7 @@ and guardrail rules in force when the blocks were generated.
 
 | Value | Status | Description |
 |-------|--------|-------------|
-| `v1-blocks` | **Current** | First stable blocks schema: 4–7 blocks, roles from `BLOCK_ROLES`, narrative + key_play_ids per block. |
+| `v1-blocks` | **Current** | First stable blocks schema: 3–7 blocks, roles from `BLOCK_ROLES`, narrative + key_play_ids per block. |
 
 **When it increments:** When `blocks_json` shape changes incompatibly (e.g., new required
 fields, role vocabulary changes, guardrail rule changes that alter structure). Independent

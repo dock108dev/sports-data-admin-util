@@ -20,6 +20,10 @@ dependencies = [
   "nflreadpy>=0.1.5",
   # Transitive dep — pinned for CVE fix (ReDoS in AdlLexer/GUID matching)
   "pygments>=2.20.0",
+  # OpenTelemetry — traces + metrics exported via OTLP gRPC
+  "opentelemetry-sdk>=1.29.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.29.0,<2.0.0",
+  "opentelemetry-instrumentation-celery>=0.50b0,<1.0.0",
 ]
 
 [dependency-groups]

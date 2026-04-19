@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,14 +11,18 @@ from starlette.responses import JSONResponse
 
 from app.analytics.api.analytics_routes import router as analytics_router
 from app.config import settings
-from app.db import _get_engine
+from app.db import _get_engine, get_async_session
+from app.otel import configure_telemetry, instrument_fastapi
+from app.db.telemetry import CircuitBreakerTripEvent
 from app.dependencies.auth import verify_api_key
 from app.dependencies.roles import require_admin, require_user
 from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.realtime.listener import pg_listener
 from app.realtime.manager import realtime_manager
 from app.realtime.poller import db_poller
+from app.realtime.streams import RedisStreamsBridge
 from app.realtime.sse import router as sse_router
 from app.realtime.ws import router as ws_router
 from app.routers import auth, fairbet, preferences, simulator, social, sports
@@ -25,14 +30,18 @@ from app.routers.v1 import router as v1_router
 from app.routers.model_odds import router as model_odds_router
 from app.routers.golf import router as golf_router
 from app.routers.admin import (
+    circuit_breakers,
+    coverage_report,
     odds_sync,
     pbp,
     pipeline,
+    quality_summary,
     resolution,
     task_control,
     timeline_jobs,
     users,
 )
+from app.services.circuit_breaker_registry import registry as _cb_registry
 
 configure_logging(
     service="sports-data-admin-api",
@@ -40,12 +49,51 @@ configure_logging(
     log_level=settings.log_level,
 )
 
+configure_telemetry(service_name="sports-data-admin-api", environment=settings.environment)
+
+_flush_logger = logging.getLogger(__name__ + ".cb_flush")
+
+
+async def _circuit_breaker_flush_loop() -> None:
+    """Drain pending circuit breaker trip events to DB every 10 seconds."""
+    while True:
+        await asyncio.sleep(10)
+        events = _cb_registry.drain_pending()
+        if not events:
+            continue
+        try:
+            async with get_async_session() as session:
+                for ev in events:
+                    session.add(
+                        CircuitBreakerTripEvent(
+                            breaker_name=ev.breaker_name,
+                            reason=ev.reason,
+                            tripped_at=ev.tripped_at,
+                        )
+                    )
+        except Exception:
+            _flush_logger.warning(
+                "circuit_breaker_flush_error",
+                exc_info=True,
+                extra={"pending_count": len(events)},
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start/stop background tasks (DB poller for realtime events)."""
+    """Start background tasks: streams bridge, LISTEN/NOTIFY listener, CB flush."""
+    bridge = RedisStreamsBridge(settings.redis_url, realtime_manager.boot_epoch)
+    realtime_manager.set_streams_bridge(bridge)
+    await bridge.start(realtime_manager._dispatch_local)
+
     db_poller.start()
+    pg_listener.start()
+    flush_task = asyncio.create_task(_circuit_breaker_flush_loop())
     yield
+    flush_task.cancel()
+    await pg_listener.stop()
     await db_poller.stop()
+    await bridge.stop()
 
 
 _is_prod = settings.environment in {"production", "staging"}
@@ -103,6 +151,8 @@ app = FastAPI(
     ],
 )
 logger = logging.getLogger(__name__)
+
+instrument_fastapi(app)
 
 app.add_middleware(StructuredLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
@@ -217,6 +267,24 @@ app.include_router(
     dependencies=admin_dependency,
 )
 app.include_router(
+    circuit_breakers.router,
+    prefix="/api/admin",
+    tags=["admin", "circuit-breakers"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    coverage_report.router,
+    prefix="/api/admin",
+    tags=["admin", "pipeline"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    quality_summary.router,
+    prefix="/api/admin",
+    tags=["admin", "quality"],
+    dependencies=admin_dependency,
+)
+app.include_router(
     users.router,
     prefix="/api/admin",
     tags=["admin", "users"],
@@ -233,9 +301,10 @@ app.include_router(sse_router, tags=["realtime"])
 
 @app.get("/v1/realtime/status", dependencies=auth_dependency, tags=["realtime"])
 async def realtime_status() -> JSONResponse:
-    """Connected counts per channel and mode, plus poller debug info."""
+    """Connected counts per channel and mode, plus listener debug info."""
     data = realtime_manager.status()
     data["poller"] = db_poller.stats()
+    data["listener"] = pg_listener.stats()
     return JSONResponse(data)
 
 

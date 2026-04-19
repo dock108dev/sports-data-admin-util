@@ -1124,7 +1124,10 @@ class TestCoverageDecision:
 
         result = asyncio.run(execute_validate_blocks(mock_session, stage_input))
 
-        assert result.data["decision"] == "FALLBACK"
+        # Template fallback upgrades FALLBACK → PUBLISH with deterministic blocks.
+        assert result.data["decision"] == "PUBLISH"
+        assert result.data["fallback_used"] is True
+        assert result.data["blocks_validated"] is True
 
     def test_missing_ot_triggers_regenerate(self, mock_session) -> None:
         from app.services.pipeline.models import StageInput
@@ -1346,8 +1349,11 @@ class TestMiniBoxDecision:
 
         result = self._run(stage_input)
 
-        assert result.data["blocks_validated"] is False
-        assert result.data["decision"] == "FALLBACK"
+        # Template fallback upgrades FALLBACK → PUBLISH; original errors are preserved.
+        assert result.data["decision"] == "PUBLISH"
+        assert result.data["fallback_used"] is True
+        assert result.data["blocks_validated"] is True
+        # Original mini_box errors still recorded in the errors list
         assert any("mini_box" in e for e in result.data["errors"])
 
 
@@ -1421,3 +1427,84 @@ class TestValidateEmbeddedTweetIds:
         msg = str(exc_info.value)
         assert "7" in msg
         assert "8" in msg
+
+
+# ── Generic phrase density ────────────────────────────────────────────────────
+
+
+class TestGenericPhraseDensity:
+    """Tests for _check_generic_phrase_density in validate_blocks."""
+
+    def setup_method(self) -> None:
+        from app.services.pipeline.stages.validate_blocks import _check_generic_phrase_density
+        self._check = _check_generic_phrase_density
+
+    def _block(self, idx: int, narrative: str) -> dict:
+        return {"block_index": idx, "narrative": narrative}
+
+    def test_clean_blocks_no_warnings(self) -> None:
+        """Blocks with zero generic phrases produce no warnings."""
+        blocks = [
+            self._block(0, (
+                "Anthony Davis scored 28 points with 12 rebounds in the fourth quarter "
+                "while LeBron James recorded his tenth triple-double of the season and "
+                "the Lakers built a commanding lead before the final buzzer tonight."
+            )),
+        ]
+        errors, warnings = self._check(blocks)
+        assert errors == []
+        assert warnings == []
+
+    def test_high_density_triggers_warning(self) -> None:
+        """A block packed with generic phrases produces a structured warning."""
+        # ~20 words, 2 generic phrases = 10/100 words — well above 2.0 threshold
+        blocks = [
+            self._block(0, (
+                "They gave it their all and proved too much for the opposition "
+                "in what was a memorable evening of basketball action tonight."
+            )),
+        ]
+        errors, warnings = self._check(blocks)
+        assert errors == []
+        assert len(warnings) == 1
+        assert "generic phrase density" in warnings[0]
+        assert "block_index=0" in warnings[0] or "Block 0" in warnings[0]
+
+    def test_low_density_no_warning(self) -> None:
+        """A single phrase in a long block stays below threshold."""
+        # 1 phrase in ~80 words = 1.25/100 — below threshold of 2.0
+        filler = " ".join(["The team executed their game plan perfectly."] * 7)
+        blocks = [
+            self._block(0, "They gave it their all. " + filler),
+        ]
+        errors, warnings = self._check(blocks)
+        assert errors == []
+        assert warnings == []
+
+    def test_multiple_blocks_warns_per_block(self) -> None:
+        """Each over-dense block produces its own warning."""
+        dense_narrative = (
+            "They gave it their all, played their hearts out, proved too much, "
+            "made their mark, showed a lot of heart in this hard-fought battle."
+        )
+        blocks = [
+            self._block(0, dense_narrative),
+            self._block(1, dense_narrative),
+        ]
+        errors, warnings = self._check(blocks)
+        assert errors == []
+        assert len(warnings) == 2
+
+    def test_empty_narrative_skipped(self) -> None:
+        """Blocks with empty narrative are skipped without error."""
+        blocks = [self._block(0, "")]
+        errors, warnings = self._check(blocks)
+        assert errors == []
+        assert warnings == []
+
+    def test_returns_no_errors_ever(self) -> None:
+        """Density check never produces errors — only warnings."""
+        dense = " ".join(["gave it their all"] * 20)
+        blocks = [self._block(i, dense) for i in range(5)]
+        errors, warnings = self._check(blocks)
+        assert errors == []

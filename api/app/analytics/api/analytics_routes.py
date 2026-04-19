@@ -25,7 +25,6 @@ from app.analytics.services.profile_service import (
     ProfileResult,
     get_team_rolling_profile,
     get_team_roster,
-    profile_to_pa_probabilities,
     profile_to_probabilities,
 )
 from app.db import get_db

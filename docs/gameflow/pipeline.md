@@ -204,7 +204,7 @@ return min(base, 7)
 **Storage:**
 - Table: `sports_game_stories`
 - Columns: `moments_json`, `blocks_json`
-- Version: `story_version = "v2-moments"`, `blocks_version = "v1-blocks"`
+- Version: `story_version = "v2-blocks"`, `blocks_version = "v1-blocks"`
 - Metadata: `moment_count`, `block_count`, `validated_at`
 
 ## Pipeline Execution

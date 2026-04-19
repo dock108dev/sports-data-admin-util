@@ -17,7 +17,6 @@ from app.analytics.sports.ncaab.constants import (
     BASELINE_DEF_RATING,
     BASELINE_FT_PCT,
     BASELINE_OFF_EFG_PCT,
-    BASELINE_OFF_ORB_PCT,
     BASELINE_OFF_RATING,
     BASELINE_OFF_TOV_PCT,
     DEFAULT_EVENT_PROBS,

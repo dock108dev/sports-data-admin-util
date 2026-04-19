@@ -1,0 +1,129 @@
+name: Realtime SSE Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      clients:
+        description: "Number of concurrent SSE clients"
+        required: false
+        default: "500"
+      duration:
+        description: "Test duration in seconds (600 = 10 min)"
+        required: false
+        default: "600"
+      rate:
+        description: "Events per second per channel"
+        required: false
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  load-test:
+    name: SSE Load Test (${{ github.event.inputs.clients || '500' }} clients, ${{ github.event.inputs.duration || '600' }}s)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+      LOAD_TEST_URL: http://localhost:8000
+      LOAD_TEST_CLIENTS: ${{ github.event.inputs.clients || '500' }}
+      LOAD_TEST_DURATION: ${{ github.event.inputs.duration || '600' }}
+      LOAD_TEST_RATE: ${{ github.event.inputs.rate || '5' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -r api/requirements.txt
+
+      - name: Run Alembic migrations
+        working-directory: api
+        run: |
+          source ../.venv/bin/activate
+          alembic upgrade head
+
+      - name: Start API server
+        run: |
+          source .venv/bin/activate
+          PYTHONPATH=api uvicorn app.main:app \
+            --host 0.0.0.0 --port 8000 \
+            --workers 1 \
+            --log-level warning &
+          echo $! > /tmp/api.pid
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/healthz | grep -q '"status":"ok"'; then
+              echo "API healthy"
+              exit 0
+            fi
+            echo "  waiting ($i/30)..."
+            sleep 3
+          done
+          echo "API did not become healthy"
+          exit 1
+
+      - name: Run SSE load test
+        run: |
+          source .venv/bin/activate
+          python tests/load/sse_load_test.py \
+            --url "$LOAD_TEST_URL" \
+            --redis "$REDIS_URL" \
+            --clients "$LOAD_TEST_CLIENTS" \
+            --duration "$LOAD_TEST_DURATION" \
+            --rate "$LOAD_TEST_RATE"
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -f /tmp/api.pid ]; then
+            kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload load test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sse-load-test-report-${{ github.run_id }}
+          path: tests/load/results/
+          retention-days: 30

@@ -162,6 +162,11 @@ class GamePhase(str, Enum):
     unknown = "unknown"
 
 
+class MediaType(str, Enum):
+    video = "video"
+    image = "image"
+
+
 class SocialPostEntry(BaseModel):
     """Social post entry with camelCase output."""
 
@@ -176,11 +181,8 @@ class SocialPostEntry(BaseModel):
     video_url: str | None = Field(None, alias="videoUrl")
     image_url: str | None = Field(None, alias="imageUrl")
     source_handle: str | None = Field(None, alias="sourceHandle")
-    media_type: str | None = Field(None, alias="mediaType")
+    media_type: MediaType | None = Field(None, alias="mediaType")
     game_phase: GamePhase | None = Field(None, alias="gamePhase")
-    likes_count: int | None = Field(None, alias="likesCount")
-    retweets_count: int | None = Field(None, alias="retweetsCount")
-    replies_count: int | None = Field(None, alias="repliesCount")
 
 
 class LiveSnapshot(BaseModel):

@@ -13,15 +13,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.sports.nfl.constants import (
-    BASELINE_CPOE,
-    BASELINE_EPA_PER_PLAY,
-    BASELINE_EXPLOSIVE_RATE,
-    BASELINE_PASS_RATE,
-    BASELINE_SACK_RATE,
-    BASELINE_SUCCESS_RATE,
-    BASELINE_TURNOVER_RATE,
-)
 
 logger = logging.getLogger(__name__)
 

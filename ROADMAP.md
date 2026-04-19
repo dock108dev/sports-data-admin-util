@@ -23,7 +23,7 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - [ ] Add `pytest` CI gate that runs the pipeline against the corpus and diffs outputs against reference on every PR.
 - [ ] Add coverage validation: assert every flow mentions final score, winning team, and OT if applicable. See `docs/research/nlg-coverage-validation-techniques.md`.
 - [ ] Add `mini_box` population audit in `validate_blocks.py` — reject any block missing cumulative stats + segment deltas.
-- [ ] Align block count constraints: decide on backend MIN=3 (blowouts) vs frontend MIN=4, then enforce one in both.
+- [x] Align block count constraints: MIN=3 (blowouts) enforced in both `block_types.py` and `guardrails.ts`.
 - [ ] Add a "recap pending" consumer-facing state with ETA instead of 404 on missing flows.
 - [ ] Backfill script to regenerate flows for any FINAL game from last 7 days missing a flow.
 
@@ -43,12 +43,12 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - [ ] Delete `_swap_score()` helper once migration complete.
 - [ ] Make `isLive`, `isFinal`, `isPregame` computed non-nullable booleans in `GameSummary`.
 - [ ] Audit all response schemas for missing camelCase `Field(alias=...)` declarations; add lint check.
-- [ ] Dedupe `PipelineStage` enum: single source of truth in `services/pipeline/models.py`, imported by DB layer.
-- [ ] Remove `cancelled`/`canceled` duplicate entry in `GameStatus` enum. See `docs/research/alembic-enum-sync-strategies.md`.
-- [ ] Introduce `/api/v1/` router namespace for consumer endpoints. Move `/games/{id}/flow` out of admin router. See `docs/research/fastapi-api-versioning-patterns.md`.
+- [x] Dedupe `PipelineStage` enum: single source of truth in `services/pipeline/models.py`, imported by DB layer.
+- [x] Remove `cancelled`/`canceled` duplicate entry in `GameStatus` enum. Canonical value is `CANCELLED`.
+- [x] Introduce `/api/v1/` router namespace for consumer endpoints. Game flow endpoint live at `/api/v1/games/{id}/flow`.
 - [ ] Split auth middleware: consumer keys vs admin keys with different rate limits.
 - [ ] Add JSONB schema validation for `external_ids`, `external_codes` at write time. See `docs/research/jsonb-schema-validation-postgres.md`.
-- [ ] Document `story_version` vs `blocks_version` semantics; rename `v2-moments` to `v2-blocks` if appropriate.
+- [x] Document `story_version` vs `blocks_version` semantics; renamed `v2-moments` to `v2-blocks`. See `docs/gameflow/version-semantics.md`.
 
 ---
 

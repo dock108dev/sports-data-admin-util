@@ -179,10 +179,38 @@ async def resolve_role(
     if not settings.auth_enabled:
         return "admin"
 
-    # Requests that passed API-key verification (admin proxy) are admin.
-    # The API key is only held by the admin UI proxy, so a valid key
-    # is sufficient proof of admin access — no Origin check needed.
+    # Requests that passed API-key verification (admin proxy) are admin —
+    # UNLESS the caller also supplies a JWT, in which case the JWT role wins.
+    # Without this check, any authenticated user routing through the proxy
+    # (which injects the admin API key on all paths) would receive admin access
+    # regardless of their actual role claim.
     if getattr(request.state, "api_key_verified", False):
+        if credentials is not None:
+            try:
+                payload = decode_access_token(credentials.credentials)
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has expired",
+                )
+            except jwt.PyJWTError:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token",
+                )
+            role = payload.get("role", "user")
+            if role not in VALID_ROLES:
+                role = "user"
+            try:
+                request.state.user_id = int(payload["sub"])
+            except (KeyError, ValueError, TypeError):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token",
+                )
+            request.state.user_role = role
+            request.state.remember_me = bool(payload.get("rm"))
+            return role
         return "admin"
 
     if credentials is None:

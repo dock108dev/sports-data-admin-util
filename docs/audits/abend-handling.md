@@ -372,6 +372,78 @@ The comment is accurate: alert refresh is background enrichment. The warn log sa
 
 ---
 
+---
+
+## Second-Pass Findings (2026-04-19)
+
+New findings not covered in the 2026-04-18 pass. Three fixed in-place.
+
+### H-NEW-1 — `scraper/sports_scraper/persistence/games.py:69,81,92` — Silent Redis Cache Helpers (**Fixed**)
+
+`_cache_get`, `_cache_set`, `_cache_delete` all catch `Exception` and `pass` with zero logging.
+Redis outages produce no log output — all game-matching cache reads silently degrade to DB lookups across all Celery workers simultaneously, with no way to diagnose the slowdown.
+
+**Fix:** Added `logger.debug(..., exc_info=True)` to each helper.
+
+---
+
+### H-NEW-2 — `api/app/services/pipeline/stages/finalize_moments.py:292` — pg_notify at debug (**Fixed**)
+
+```python
+except Exception:
+    logger.debug("flow_published_notify_failed", extra={"game_id": game_id})
+```
+
+`pg_notify('flow_published', ...)` triggers all realtime SSE/WS delivery of new flow data. If this fails, all live subscribers stop receiving flow updates — only signal is a `debug` log invisible in production.
+
+**Fix:** Upgraded to `logger.warning(..., exc_info=True)`.
+
+---
+
+### H-NEW-3 — `web/src/app/admin/control-panel/page.tsx:498–500` — Silent hold-toggle failure (**Fixed**)
+
+```typescript
+} catch {
+  // ignore
+}
+```
+
+The scheduler hold toggle catches failure silently — UI shows toggled state while server state is unchanged. Admin thinks schedulers are held when they aren't.
+
+**Fix:** Changed to `setHoldError(true)` so existing error banner fires.
+
+---
+
+### M-NEW-1 — `api/app/realtime/manager.py:253` — `realtime_send_failed` at debug
+
+`_dispatch_local` catches unexpected WS/SSE send failures at `logger.debug`. Sustained delivery failures (all connections dying) increment `_error_count` but produce no visible signal in production.
+
+**Recommendation:** Upgrade to `logger.warning`.
+
+---
+
+### M-NEW-2 — `api/app/analytics/services/mlb_player_profiles.py:189` — Unlogged pitcher stats fallback
+
+```python
+except Exception:
+    # Table may not exist yet or query failed — fall back
+    return None
+```
+
+Zero logging on exception. Production query failures are invisible; only "table may not exist" case is expected and harmless.
+
+**Recommendation:** Add `logger.warning("pitcher_statcast_query_failed", exc_info=True)`.
+
+---
+
+### M-NEW-3 — `scraper/sports_scraper/live_odds/redis_store.py:161` — Silent Redis scan failure
+
+`get_all_live_keys_for_game` returns `[]` on exception with no logging. Redis scan failure makes the key list appear empty.
+
+**Recommendation:** Add `logger.debug(..., exc_info=True)`.
+
+---
+
 ## Appendix — Full Silent Pass Inventory (Production Code Only)
 
 | File | Line | Exception | Context | Verdict |

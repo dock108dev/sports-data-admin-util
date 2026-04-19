@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.services.profile_service import (
-    ProfileResult,
     _clamp,
     _season_weights,
     _weighted_mean,

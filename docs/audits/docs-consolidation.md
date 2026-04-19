@@ -1,8 +1,62 @@
 # Documentation Consolidation Audit
 
-> Branch: `aidlc_1` — Date: 2026-04-18
+---
 
-## Summary
+## Review Pass 2 — 2026-04-19
+
+47 documentation files audited. No files deleted. No files moved. Five targeted fixes applied: two factual corrections in `docs/gameflow/`, three checked-off roadmap items, and stale-resolution annotations in `BRAINDUMP.md`.
+
+### Files Changed
+
+#### `docs/gameflow/pipeline.md`
+
+**Problem:** Stage 8 (FINALIZE_MOMENTS) storage block listed `story_version = "v2-moments"`. The code (`finalize_moments.py`) writes `FLOW_VERSION = "v2-blocks"` since the `aidlc_1` rename.
+
+**Fix:** Updated to `story_version = "v2-blocks"`.
+
+#### `docs/gameflow/version-semantics.md`
+
+**Problem:** The `v1-blocks` table row described the schema as "4–7 blocks." `MIN_BLOCKS = 3` is the actual constant (verified in `api/app/services/pipeline/stages/block_types.py`).
+
+**Fix:** Updated to "3–7 blocks".
+
+#### `ROADMAP.md`
+
+**Problem:** Five items completed during `aidlc_1` were still shown as unchecked.
+
+**Items checked off:**
+
+| Item | Evidence |
+|------|----------|
+| Align block count constraints | `MIN_BLOCKS = 3` in both `block_types.py` and `guardrails.ts` |
+| Dedupe `PipelineStage` enum | SSOT in `services/pipeline/models.py`; `db/pipeline.py` re-exports |
+| Remove `cancelled`/`canceled` duplicate | Canonical value `CANCELLED` confirmed; migration `20260419_000038` applied |
+| Introduce `/api/v1/` router namespace | `api/app/routers/v1/` exists; game flow endpoint live |
+| Document `story_version` semantics + rename | `docs/gameflow/version-semantics.md` published; code writes `v2-blocks` |
+
+#### `BRAINDUMP.md`
+
+**Problem:** Three analytical sections described problems that `aidlc_1` resolved, without noting the resolution. Readers would conclude the problems were still open.
+
+**Sections updated with `> Resolved in aidlc_1` callouts:**
+
+| Section | Stale claim | Current state |
+|---------|-------------|---------------|
+| "Guardrails enforcement" | Frontend MIN=4 vs backend MIN=3 mismatch | Both are 3; verified in sync |
+| "Consumer-facing game flow components" | No `/api/v1/` consumer endpoint | `/api/v1/games/{id}/flow` is live |
+| "`story_version = 'v2-moments'` naming" | Naming was confusing | Renamed to `v2-blocks`; version doc published |
+| "Scores are tuples, not objects" | All endpoints return tuples | Consumer endpoint uses `ScoreObject`; admin migration is Phase 2 |
+| "The `moments` layer is vestigial" | Moments exposed in consumer API | Moments not in `/api/v1/` response; internal only |
+
+### Files Audited and Unchanged (this pass)
+
+All 42 remaining docs re-verified. No further issues found. See Review Pass 1 section below for the full file-by-file table.
+
+---
+
+## Review Pass 1 — 2026-04-18
+
+> Branch: `aidlc_1`
 
 47 documentation files audited across the repo. No files deleted (all carry unique value). No files moved (root docs are referenced by `CLAUDE.md` and must stay in place). Six files updated to fix factual errors or stale content introduced by the `aidlc_1` SSOT cleanup changes.
 

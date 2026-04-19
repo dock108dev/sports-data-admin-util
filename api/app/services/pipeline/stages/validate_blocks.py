@@ -29,9 +29,12 @@ from __future__ import annotations
 
 import logging
 import re
+import tomllib
+from pathlib import Path
 from typing import Any
 
 from ....db import AsyncSession
+from ..metrics import increment_fallback, increment_regen
 from ..models import StageInput, StageOutput
 from .block_types import (
     MAX_BLOCKS,
@@ -71,6 +74,118 @@ COMMON_ABBREVIATIONS = [
     "St.", "Ave.", "Blvd.", "Rd.", "Mt.", "Ft.",  # Addresses
     "Jan.", "Feb.", "Mar.", "Apr.", "Aug.", "Sept.", "Oct.", "Nov.", "Dec.",
 ]
+
+
+# ── Generic phrase density ────────────────────────────────────────────────────
+
+# Density threshold: warnings fire above this many phrase matches per 100 words.
+_GENERIC_PHRASE_DENSITY_THRESHOLD = 2.0
+
+# Path is relative to this file: sda/api/app/services/pipeline/stages/ (parents[5] = sda/)
+_GENERIC_PHRASES_TOML = (
+    Path(__file__).parents[5] / "scraper/sports_scraper/pipeline/grader_rules/generic_phrases.toml"
+)
+
+# Minimal fallback used when the TOML can't be loaded (e.g., different deployment layout).
+_GENERIC_PHRASES_FALLBACK: list[str] = [
+    "gave it their all",
+    "showed a lot of heart",
+    "made their mark",
+    "a hard-fought battle",
+    "rose to the occasion",
+    "when it mattered most",
+    "from start to finish",
+]
+
+
+def _load_generic_phrases() -> tuple[list[str], float]:
+    """Load phrase list and density threshold from the grader_rules TOML.
+
+    Returns (phrases, density_threshold). Falls back to a minimal hardcoded list
+    if the TOML file is not found (e.g., split-deployment layout).
+    """
+    if not _GENERIC_PHRASES_TOML.exists():
+        logger.warning(
+            "generic_phrases_toml_not_found",
+            extra={"path": str(_GENERIC_PHRASES_TOML)},
+        )
+        return _GENERIC_PHRASES_FALLBACK, _GENERIC_PHRASE_DENSITY_THRESHOLD
+
+    try:
+        with open(_GENERIC_PHRASES_TOML, "rb") as f:
+            data = tomllib.load(f)
+        config = data.get("config", {})
+        threshold = float(config.get("density_threshold", _GENERIC_PHRASE_DENSITY_THRESHOLD))
+        phrases: list[str] = []
+        phrases_section = data.get("phrases", {})
+        for val in phrases_section.values():
+            if isinstance(val, list):
+                phrases.extend(str(p).lower() for p in val)
+        return phrases, threshold
+    except Exception:
+        logger.warning(
+            "generic_phrases_toml_load_failed",
+            exc_info=True,
+            extra={"path": str(_GENERIC_PHRASES_TOML)},
+        )
+        return _GENERIC_PHRASES_FALLBACK, _GENERIC_PHRASE_DENSITY_THRESHOLD
+
+
+# Loaded once at module import; mutations require a process restart.
+_GENERIC_PHRASES, _DENSITY_THRESHOLD = _load_generic_phrases()
+
+
+def _check_generic_phrase_density(
+    blocks: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    """Warn when generic-phrase density in any block exceeds the threshold.
+
+    Emits a structured warning (not an error) for each block where phrase density
+    exceeds _DENSITY_THRESHOLD matches per 100 words. Does not affect PUBLISH/
+    REGENERATE/FALLBACK decision — it is a quality signal only.
+
+    Args:
+        blocks: Narrative blocks from the flow.
+
+    Returns:
+        Tuple of (errors, warnings). Errors is always empty; warnings carry
+        structured messages per over-dense block.
+    """
+    warnings: list[str] = []
+
+    for block in blocks:
+        block_idx = block.get("block_index", "?")
+        narrative = block.get("narrative", "")
+        if not narrative:
+            continue
+
+        lower = narrative.lower()
+        matched = [p for p in _GENERIC_PHRASES if p in lower]
+        if not matched:
+            continue
+
+        word_count = len(narrative.split())
+        if word_count == 0:
+            continue
+
+        density = (len(matched) / word_count) * 100
+        if density > _DENSITY_THRESHOLD:
+            warnings.append(
+                f"Block {block_idx}: generic phrase density {density:.1f}/100 words "
+                f"(threshold={_DENSITY_THRESHOLD:.1f}); matched={matched}"
+            )
+            logger.warning(
+                "generic_phrase_density_exceeded",
+                extra={
+                    "block_index": block_idx,
+                    "density": round(density, 2),
+                    "threshold": _DENSITY_THRESHOLD,
+                    "matched_phrases": matched,
+                    "word_count": word_count,
+                },
+            )
+
+    return [], warnings
 
 
 def _normalize_text(text: str) -> str:
@@ -609,6 +724,17 @@ async def execute_validate_blocks(
     else:
         output.add_log("Rule 8 PASSED")
 
+    # 9. Generic phrase density (soft quality signal — warnings only, never hard errors)
+    _, density_warnings = _check_generic_phrase_density(blocks)
+    all_warnings.extend(density_warnings)
+    if density_warnings:
+        output.add_log(
+            f"Rule 9 WARNING: generic phrase density exceeded in {len(density_warnings)} block(s)",
+            level="warning",
+        )
+    else:
+        output.add_log("Rule 9 PASSED")
+
     # Calculate total words
     total_words = sum(len(b.get("narrative", "").split()) for b in blocks)
 
@@ -616,13 +742,17 @@ async def execute_validate_blocks(
     passed = len(all_errors) == 0
     coverage_passed = len(coverage_errors) == 0
 
+    sport = (stage_input.game_context or {}).get("sport", "UNKNOWN")
     has_any_failure = not passed or not coverage_passed
     if not has_any_failure:
         decision = "PUBLISH"
     elif regen_attempt < MAX_REGEN_ATTEMPTS:
         decision = "REGENERATE"
+        reason = "coverage_fail" if coverage_errors else "quality_fail"
+        increment_regen(sport, reason)
     else:
         decision = "FALLBACK"
+        increment_fallback(sport)
 
     if passed and coverage_passed:
         output.add_log(f"VALIDATE_BLOCKS PASSED with {len(all_warnings)} warnings")
@@ -635,6 +765,37 @@ async def execute_validate_blocks(
         )
 
     output.add_log(f"Total word count: {total_words}")
+
+    # ── Template fallback ────────────────────────────────────────────────────
+    # When validation exhausts regen attempts, replace invalid LLM blocks with
+    # deterministic template blocks guaranteed to pass all structural checks.
+    fallback_used = False
+    if decision == "FALLBACK":
+        from .templates import GameMiniBox as _TMiniBox, TemplateEngine as _TEngine
+
+        _ctx = stage_input.game_context or {}
+        _home_team = _ctx.get("home_team_name", _ctx.get("home_team", "Home Team"))
+        _away_team = _ctx.get("away_team_name", _ctx.get("away_team", "Away Team"))
+        _tmb = _TMiniBox(
+            home_team=_home_team,
+            away_team=_away_team,
+            home_score=home_score,
+            away_score=away_score,
+            sport=sport,
+            has_overtime=has_overtime,
+            total_moments=total_moments,
+        )
+        blocks = _TEngine.render(sport, _tmb)
+        total_words = sum(len(b.get("narrative", "").split()) for b in blocks)
+        passed = True
+        coverage_passed = True
+        coverage_errors = []
+        decision = "PUBLISH"
+        fallback_used = True
+        output.add_log(
+            f"FALLBACK: generated {len(blocks)} template blocks for sport={sport}, "
+            f"total_words={total_words}"
+        )
 
     # After validation passes, attach embedded tweets (social enhancement)
     embedded_tweet_selection = None
@@ -654,6 +815,7 @@ async def execute_validate_blocks(
         "total_words": total_words,
         "errors": all_errors,
         "warnings": all_warnings,
+        "fallback_used": fallback_used,
         # Embedded tweet metadata
         "embedded_tweet_selection": (
             embedded_tweet_selection.to_dict() if embedded_tweet_selection else None

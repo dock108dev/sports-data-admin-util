@@ -1,6 +1,6 @@
 # Security Audit — sports-data-admin
 
-> Performed: 2026-04-18  
+> Performed: 2026-04-18 (updated 2026-04-19)
 > Branch: `aidlc_1`  
 > Scope: Full monorepo — FastAPI API, Celery scraper, Next.js web, shared packages, infra
 
@@ -8,13 +8,13 @@
 
 ## Executive Summary
 
-The codebase has a **solid security foundation**: bcrypt password hashing, constant-time API key comparison, JWT algorithm pinning, strong production-config validation, structured log redaction, and proper consumer/admin key isolation. No critical authentication bypasses or injection vulnerabilities were found.
+The codebase has a **solid security foundation**: bcrypt password hashing, constant-time API key comparison, JWT algorithm pinning, strong production-config validation, structured log redaction, and proper consumer/admin key isolation.
 
-Five confirmed vulnerabilities (one High, four Medium) were fixed in-place during this audit. Additional hardening opportunities and areas for manual verification are documented below.
+Six confirmed vulnerabilities (two High, four Medium) were fixed in-place during this audit. Additional hardening opportunities and areas for manual verification are documented below.
 
 | Severity | Confirmed | Fixed In-Place | Remaining |
 |----------|-----------|---------------|-----------|
-| High | 1 | 1 | 0 |
+| High | 2 | 2 | 0 |
 | Medium | 4 | 4 | 0 |
 | Medium (hardening) | 4 | 0 | 4 |
 | Low | 7 | 0 | 7 |
@@ -23,6 +23,37 @@ Five confirmed vulnerabilities (one High, four Medium) were fixed in-place durin
 ---
 
 ## 1. Confirmed Vulnerabilities — Fixed In-Place
+
+### V0 · Privilege escalation via proxy: any authenticated user could access admin endpoints — FIXED
+**Severity:** High  
+**Files:** `api/app/dependencies/roles.py:185-186`, `web/src/app/proxy/[...path]/route.ts:55`  
+**Confidence:** 10/10
+
+**Description:** The Next.js proxy at `/proxy/[...path]` injects the server-side admin API key (`SPORTS_API_KEY`) into **every forwarded request**, regardless of path or the calling user's role. The backend's `resolve_role()` previously returned `"admin"` unconditionally whenever `request.state.api_key_verified` was `True` — which is set by `verify_api_key()` as soon as the valid API key is seen. Because the proxy appends the API key to all requests (line 55 of `route.ts`) and also forwards the caller's `Authorization` header (line 57), the JWT role was silently bypassed.
+
+**Exploit scenario:**
+1. Attacker creates a normal user account and receives a JWT with `role: "user"`.
+2. Attacker makes a browser `fetch("/proxy/api/admin/users")` — a path they are not authorized for.
+3. The Next.js proxy adds `X-API-Key: <server_admin_key>` and forwards the user's `Authorization: Bearer <user_jwt>`.
+4. `verify_api_key()` validates the API key, sets `api_key_verified = True`.
+5. `resolve_role()` sees the flag and previously returned `"admin"` immediately, skipping JWT evaluation entirely.
+6. `require_admin()` passes; attacker gains full admin access (user management, pipeline control, odds sync, task triggers, etc.).
+
+**Fix applied:** `resolve_role()` now checks whether a JWT bearer token is also present when `api_key_verified` is `True`. If a JWT is present, the JWT role is decoded and returned; only requests without a JWT (e.g. non-browser server-to-server calls using only the API key) continue to receive the `"admin"` role. Regular users routing through the proxy now receive their actual JWT role and are rejected by `require_admin()`.
+
+```python
+# api/app/dependencies/roles.py — after fix
+if getattr(request.state, "api_key_verified", False):
+    if credentials is not None:
+        # JWT present — respect its role, do not unconditionally elevate.
+        payload = decode_access_token(credentials.credentials)
+        role = payload.get("role", "user")
+        ...
+        return role
+    return "admin"  # no JWT — API-key-only server call, admin intent preserved
+```
+
+---
 
 ### V1 · Exception messages leaked in 500 responses — FIXED
 **Severity:** High  

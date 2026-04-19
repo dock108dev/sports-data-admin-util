@@ -50,15 +50,29 @@ What is legacy:
 
 ### Where the frontend is ahead of the backend
 
-- **Guardrails enforcement.** The frontend has `guardrails.ts` with hard invariants (max blocks, max tweets, word count limits, social independence validation). The backend has its own `validate_blocks.py` with overlapping but not identical constraints (backend allows 3-7 blocks, frontend enforces 4-7). The frontend MIN_BLOCKS = 4 but the backend MIN_BLOCKS = 3 (for blowout games). This mismatch means the frontend will flag warnings on valid backend output. These need to be aligned.
-- **Consumer-facing game flow components.** `CollapsedGameFlow.tsx`, `GameFlowView.tsx`, `ExpandableSocialSections.tsx` are fully built and production-ready. The backend pipeline generates blocks but the consumer-facing endpoint (`/games/{game_id}/flow`) doesn't exist under a consumer API path — it lives under the admin sports router. There's no clear consumer vs admin API boundary in routing.
+- **Guardrails enforcement.** The frontend has `guardrails.ts` with hard invariants (max blocks, max tweets, word count limits, social independence validation). The backend has its own `validate_blocks.py` with overlapping but not identical constraints.
+
+  > **Resolved in `aidlc_1`:** `MIN_BLOCKS` is now 3 in both `block_types.py` (backend) and `guardrails.ts` (frontend). Constants are in sync.
+
+- **Consumer-facing game flow components.** `CollapsedGameFlow.tsx`, `GameFlowView.tsx`, `ExpandableSocialSections.tsx` are fully built and production-ready.
+
+  > **Resolved in `aidlc_1`:** `/api/v1/` router namespace is live. Consumer game flow endpoint is at `/api/v1/games/{game_id}/flow`. Admin endpoints remain under `/api/admin/sports/`. Full consumer/admin split is Phase 2.
+
 - **Baseball stat display.** The frontend `MiniBoxDisplay` checks for hockey-specific stats (`player.goals !== undefined`) to switch display format, but doesn't have explicit baseball handling. Baseball block stats (runs, hits, RBIs, HR) exist in the `BlockPlayerStat` type but the rendering code in `CollapsedGameFlow.tsx` only branches on basketball vs hockey. Baseball games will fall through to the basketball formatting path, showing "pts" for baseball players. This is a frontend bug, but it's caused by the backend not signaling sport type clearly enough at the block level.
 
 ### Where the backend is leaking old assumptions
 
-- **The `moments` layer is vestigial for consumers.** The API returns both `moments` (inside `flow.moments`) and `blocks`. The frontend's primary view uses blocks exclusively. Moments exist as a fallback when blocks are absent, but in the consumer experience they serve no purpose if blocks exist. The backend should stop treating moments as a consumer-facing data structure and make them an internal pipeline artifact only.
-- **`story_version = "v2-moments"` naming.** The DB filter for current flows is `v2-moments` but the actual consumer output is blocks, not moments. This naming is confusing. When `blocks_version = "v1-blocks"` was added, the top-level story_version wasn't updated. Minor, but contributes to the "is this moments or blocks?" confusion.
-- **Scores are tuples, not objects.** `scoreBefore` and `scoreAfter` are `[int, int]` arrays. The frontend has to know that index 0 is away and index 1 is home (after the API swap). This is a brittle contract. A `{home: int, away: int}` object would be self-documenting and immune to swap bugs.
+- **The `moments` layer is vestigial for consumers.** The API returns both `moments` (inside `flow.moments`) and `blocks`. The frontend's primary view uses blocks exclusively. Moments exist as a fallback when blocks are absent, but in the consumer experience they serve no purpose if blocks exist.
+
+  > **Resolved in `aidlc_1`:** The `/api/v1/` consumer endpoint exposes blocks only. Moments are not included in the consumer response. They remain as an internal pipeline artifact for traceability.
+
+- **`story_version = "v2-moments"` naming.** The DB filter for current flows was `v2-moments` but the actual consumer output is blocks, not moments. This naming was confusing.
+
+  > **Resolved in `aidlc_1`:** New pipeline runs write `story_version = "v2-blocks"`. Legacy rows carrying `"v2-moments"` are accepted on read during the transition window and upgraded on re-run. See `docs/gameflow/version-semantics.md`.
+
+- **Scores are tuples, not objects.** `scoreBefore` and `scoreAfter` are `[int, int]` arrays on admin endpoints. The frontend has to know that index 0 is away and index 1 is home (after the API swap). This is a brittle contract.
+
+  > **Partially resolved in `aidlc_1`:** The consumer endpoint (`/api/v1/`) returns `ScoreObject {home, away}`. Admin endpoints still use tuples; full migration is Phase 2.
 
 ---
 

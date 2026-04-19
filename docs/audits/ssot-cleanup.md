@@ -129,5 +129,37 @@ grep -r "_swap_score" .                                   → 0 results
 grep -r "GameFlowMoment" packages/js-core/src/api/index.ts → 0 results (removed)
 
 # No consumer web pages use .flow.moments
-grep -r "\.flow\.moments" web/src/app --include="*.tsx" --exclude-dir=admin → 0 results
+grep -r "\.flow\.moments" web/src/app --include="*.tsx" --exclude-dir=admin → 0 results (admin FlowSection.tsx is expected)
 ```
+
+---
+
+## Destructive Cleanup Pass — 2026-04-19
+
+### 7. Stale consumer-shape tests fixed in `test_v1_flow_endpoint.py`
+
+**Problem:** `_mock_flow()` set `blocks_json = None` and used `moments_json` only. Because the v1 endpoint
+queries `blocks_json.isnot(None)`, the mock was effectively simulating a no-flow game — causing two tests
+to silently test the wrong code path:
+
+- `test_returns_flow_without_validation_fields` asserted `"flow" in data` — `flow` field was removed from
+  `ConsumerGameFlowResponse` in change #5.
+- `test_score_is_score_object` accessed `data["flow"]["moments"][0]` — neither `flow` nor `moments` exist
+  on the consumer contract.
+- `test_includes_team_metadata` called with same stale mock; would reach the `FlowStatusResponse` path
+  instead of `ConsumerGameFlowResponse` and miss team metadata entirely.
+
+**Fix:**
+- `_mock_flow()` now sets `blocks_json` with a representative OPENING block (score_before/after, play_ids,
+  role, narrative). `moments_json` is empty list (valid for v2-blocks flows).
+- `test_returns_flow_without_validation_fields` checks `"blocks" in data` and explicitly asserts
+  `"flow" not in data`.
+- `test_score_is_score_object` reads `data["blocks"][0]` for `scoreBefore`/`scoreAfter`.
+
+---
+
+### 8. Removed misleading comment from `api/app/realtime/poller.py`
+
+`db_poller = DBPoller()` carried `# Singleton — kept for backwards-compat with main.py imports`.
+The module-level instance is the live runtime object imported by `main.py`; it is not a compat shim.
+Comment deleted.

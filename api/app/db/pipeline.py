@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -230,3 +232,33 @@ class BulkFlowGenerationJob(Base):
     )
 
     __table_args__ = (Index("idx_bulk_story_jobs_uuid", "job_uuid", unique=True),)
+
+
+class PipelineCoverageReport(Base):
+    """Daily pipeline coverage summary: FINAL games vs flows generated, by sport."""
+
+    __tablename__ = "pipeline_coverage_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unique per calendar day; re-running the task for the same date overwrites this row.
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Per-sport rows: [{sport, finals_count, flows_count, missing_count, fallback_count, avg_quality_score}]
+    sport_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    # Aggregate totals (denormalised for fast reads)
+    total_finals: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_flows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_missing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_fallbacks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

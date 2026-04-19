@@ -4,6 +4,16 @@ import os
 
 from celery import Celery
 
+# OTel must be configured before the Celery app is created so CeleryInstrumentor
+# can attach to signals and propagate W3C traceparent headers on apply_async calls.
+# configure_telemetry is a no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+from app.otel import configure_telemetry
+
+configure_telemetry(
+    service_name="sports-data-admin-api",
+    environment=os.getenv("ENVIRONMENT", "development"),
+)
+
 # Redis connection from environment
 # CELERY_BROKER_URL takes precedence if set (for separate broker database)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -14,7 +24,16 @@ celery_app = Celery(
     "sports_data_admin",
     broker=CELERY_BROKER_URL,
     backend=REDIS_URL,  # Results can stay on main Redis database
-    include=["app.tasks.bulk_flow_generation", "app.tasks.training_tasks", "app.tasks.batch_sim_tasks", "app.tasks.outcome_tasks", "app.tasks.experiment_tasks", "app.tasks.replay_tasks", "app.tasks.forecast_tasks"],
+    include=[
+        "app.tasks.bulk_flow_generation",
+        "app.tasks.training_tasks",
+        "app.tasks.batch_sim_tasks",
+        "app.tasks.outcome_tasks",
+        "app.tasks.experiment_tasks",
+        "app.tasks.replay_tasks",
+        "app.tasks.forecast_tasks",
+        "app.tasks.coverage_report_task",
+    ],
 )
 
 # Configuration

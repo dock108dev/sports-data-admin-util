@@ -19,3 +19,9 @@ aiosmtplib==5.1.0
 python-multipart>=0.0.9
 # Transitive dep (via uvicorn/rich) — pinned for CVE fix (ReDoS in AdlLexer)
 Pygments>=2.20.0
+# OpenTelemetry — traces + metrics exported via OTLP gRPC
+opentelemetry-sdk==1.29.0
+opentelemetry-exporter-otlp-proto-grpc==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-sqlalchemy==0.50b0
+opentelemetry-instrumentation-celery==0.50b0

@@ -2,6 +2,10 @@
 
 URL: GET /v1/sse?channels=games:NBA:2026-03-05,game:123:summary
 Auth: X-API-Key header or api_key query param
+
+Reconnect with ?lastSeq=N&lastEpoch=<uuid> to receive missed events since seq N.
+If the epoch has changed (server restarted), an `epoch_changed` event is sent
+instead and the client should perform a full data refetch.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from starlette.responses import StreamingResponse
 
 from .auth import verify_sse_api_key
 from .manager import SSEConnection, realtime_manager
-from .models import is_valid_channel
+from .models import RealtimeEvent, is_valid_channel
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +32,18 @@ SSE_KEEPALIVE_INTERVAL_S = 15
 async def sse_endpoint(
     request: Request,
     channels: str = Query(..., description="Comma-separated channel list"),
+    last_seq: int | None = Query(default=None, alias="lastSeq"),
+    last_epoch: str | None = Query(default=None, alias="lastEpoch"),
     _auth: None = Depends(verify_sse_api_key),
 ) -> StreamingResponse:
     """SSE realtime endpoint.
 
     Streams JSON events as `data:` lines. Sends keepalive comments every 15s.
+
+    On reconnect, pass `lastSeq` and `lastEpoch` to receive missed events from
+    the stream backlog.  If `lastEpoch` differs from the server's current boot
+    epoch, an `epoch_changed` event is sent and no backfill is performed —
+    the client should do a full data refetch.
     """
     channel_list = [ch.strip() for ch in channels.split(",") if ch.strip()]
 
@@ -57,6 +68,24 @@ async def sse_endpoint(
 
     async def _event_generator():
         try:
+            # Epoch mismatch: server restarted, client must full-refetch.
+            if last_epoch is not None and last_epoch != realtime_manager.boot_epoch:
+                yield f"data: {json.dumps({'type': 'epoch_changed', 'epoch': realtime_manager.boot_epoch})}\n\n"
+
+            # Same epoch + lastSeq: replay missed events from Redis Stream backlog.
+            elif last_seq is not None and last_epoch == realtime_manager.boot_epoch:
+                for ch in valid:
+                    missed = await realtime_manager.fetch_backlog(ch, last_seq)
+                    for entry in missed:
+                        event = RealtimeEvent(
+                            type=entry["type"],
+                            channel=entry["channel"],
+                            seq=entry["seq"],
+                            payload=entry["payload"],
+                            boot_epoch=realtime_manager.boot_epoch,
+                        )
+                        yield f"data: {json.dumps(event.to_dict())}\n\n"
+
             # Send initial confirmation
             confirm = json.dumps({"type": "subscribed", "channels": valid})
             yield f"data: {confirm}\n\n"

@@ -18,6 +18,8 @@ import {
   TASK_REGISTRY,
   CATEGORIES,
 } from "./taskRegistry";
+import { CircuitBreakerPanel } from "@/components/admin/CircuitBreakerPanel";
+import { CoverageReportPanel } from "@/components/admin/CoverageReportPanel";
 
 // ── TaskCard component ──
 
@@ -493,8 +495,9 @@ export default function ControlPanelPage() {
     try {
       const res = await setHoldStatus(!held);
       setHeld(res.held);
+      setHoldError(false);
     } catch {
-      // ignore
+      setHoldError(true);
     } finally {
       setToggling(false);
     }
@@ -530,6 +533,9 @@ export default function ControlPanelPage() {
           </button>
         </div>
       </div>
+
+      <CircuitBreakerPanel />
+      <CoverageReportPanel />
 
       <div className={styles.categoryGroup}>
         <h2 className={styles.categoryTitle}>Backfill</h2>

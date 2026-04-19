@@ -8,10 +8,12 @@ strategy and a Redis-based match cache shared across all Celery workers.
 
 from __future__ import annotations
 
+import json
 from datetime import date as _date_type, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.orm import Session, object_session
 
 from ..db import db_models
 from ..logging import logger
@@ -23,6 +25,23 @@ from .teams import _upsert_team
 
 if TYPE_CHECKING:
     from ..models import TeamIdentity
+
+
+def _notify_game_update(session: Session | None, game_id: int) -> None:
+    """Emit pg_notify('game_score_update', ...) within the current transaction.
+
+    Best-effort — never raises. The notification fires on transaction commit
+    so the API LISTEN handler always sees consistent data.
+    """
+    if session is None:
+        return
+    try:
+        payload = json.dumps({"game_id": game_id, "event_type": "game_score_update"})
+        session.execute(
+            text("SELECT pg_notify('game_score_update', :p)"), {"p": payload}
+        )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +67,7 @@ def _cache_get(key: str) -> int | None:
         if val is not None:
             return int(val)
     except Exception:
-        pass
+        logger.debug("game_cache_get_failed", extra={"key": key}, exc_info=True)
     return None
 
 
@@ -60,7 +79,7 @@ def _cache_set(key: str, game_id: int) -> None:
         r = redis_lib.from_url(settings.redis_url, decode_responses=True)
         r.set(key, str(game_id), ex=_GAME_CACHE_TTL)
     except Exception:
-        pass
+        logger.debug("game_cache_set_failed", extra={"key": key}, exc_info=True)
 
 
 def _cache_delete(key: str) -> None:
@@ -71,7 +90,7 @@ def _cache_delete(key: str) -> None:
         r = redis_lib.from_url(settings.redis_url, decode_responses=True)
         r.delete(key)
     except Exception:
-        pass
+        logger.debug("game_cache_delete_failed", extra={"key": key}, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +365,6 @@ def _enrich_existing(
                 )
             )
             # Use the session bound to this game's state
-            from sqlalchemy.orm import object_session
             sess = object_session(game)
             if sess and not sess.execute(conflict).first():
                 game.game_date = new_dt
@@ -360,6 +378,7 @@ def _enrich_existing(
     if updated:
         game.updated_at = now_utc()
         game.last_ingested_at = now_utc()
+        _notify_game_update(object_session(game), game.id)
 
 
 def _normalize_status(status: str | None) -> str:
@@ -515,6 +534,7 @@ def update_game_from_live_feed(
         game.updated_at = now_utc()
         game.last_ingested_at = now_utc()
         session.flush()
+        _notify_game_update(session, game.id)
     return updated
 
 

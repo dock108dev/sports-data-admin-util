@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     odds_api_regions: str | None = Field(None, alias="ODDS_API_REGIONS")
     odds_api_weekly_cap: int | None = Field(None, alias="ODDS_API_WEEKLY_CAP")
     datagolf_api_key: str | None = Field(None, alias="DATAGOLF_API_KEY")
+    # Feature flag: enable prototype Bluesky social collector (default off)
+    bluesky_enabled: bool = Field(False, alias="ENABLE_BLUESKY_SOCIAL")
 
     @model_validator(mode="after")
     def _apply_scraper_overrides(self) -> Settings:

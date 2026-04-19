@@ -348,17 +348,12 @@ def resolve_team_abbreviation(game: SportsGame, post: TeamSocialPost) -> str:
     raise ValueError(f"Cannot resolve team abbreviation for post {post.id} in game {game.id}")
 
 
-def _total_interactions(post: TeamSocialPost) -> int:
-    """Sum engagement metrics for sorting priority."""
-    return (post.likes_count or 0) + (post.retweets_count or 0) + (post.replies_count or 0)
-
-
 def serialize_social_posts(
     game: SportsGame,
     posts: Sequence[TeamSocialPost],
 ) -> list[SocialPostEntry]:
-    """Serialize social posts for API responses, sorted by total interactions desc."""
-    sorted_posts = sorted(posts, key=_total_interactions, reverse=True)
+    """Serialize social posts for API responses, sorted by posted_at desc."""
+    sorted_posts = sorted(posts, key=lambda p: p.posted_at, reverse=True)
     entries: list[SocialPostEntry] = []
     for post in sorted_posts:
         entries.append(
@@ -374,9 +369,6 @@ def serialize_social_posts(
                 source_handle=post.source_handle,
                 media_type=post.media_type,
                 game_phase=post.game_phase,
-                likes_count=post.likes_count,
-                retweets_count=post.retweets_count,
-                replies_count=post.replies_count,
             )
         )
     return entries

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import UTC, date, datetime
+from datetime import date
 
 from app.utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 from typing import TYPE_CHECKING, Any

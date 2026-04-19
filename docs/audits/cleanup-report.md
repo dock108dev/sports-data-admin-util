@@ -1,6 +1,6 @@
 # Code Quality Cleanup Report
 
-> Run: 2026-04-18. Branch: aidlc_1.
+> Run: 2026-04-18. Branch: aidlc_1. Updated: 2026-04-19 (Round 2 — analytics layer sweep).
 
 ## Summary
 
@@ -137,3 +137,44 @@ Two genuine TODO comments remain and track real architectural work:
 ## Intentional Duplication (Not Consolidated)
 
 `api/app/utils/datetime_utils.py` and `scraper/sports_scraper/utils/datetime_utils.py` both define the same 7 datetime helpers. Both files document this as intentional — `api/` and `scraper/` deploy as independent packages. Function names are kept in sync manually.
+
+---
+
+## Round 2 — Analytics Layer Sweep (2026-04-19)
+
+### Additional Dead Imports Removed (13 files)
+
+A sweep of `api/app/analytics/` found 13 more unused imports. All verified with `py_compile`.
+
+| File | Removed | Reason |
+|------|---------|--------|
+| `api/app/analytics/datasets/mlb_batted_ball_dataset.py` | `UTC, datetime` | Only `date` used; ET helpers from `datetime_utils` handle UTC conversion |
+| `api/app/analytics/datasets/mlb_pa_dataset.py` | `UTC, datetime` | Same pattern |
+| `api/app/analytics/datasets/mlb_pitch_dataset.py` | `UTC, datetime` | Same pattern |
+| `api/app/analytics/services/nfl_drive_profiles.py` | 7 `BASELINE_*` constants from `nfl.constants` | Profile built entirely from raw DB rows; baselines never referenced in body |
+| `api/app/analytics/services/lineup_reconstruction.py` | `and_` from `sqlalchemy` | Only `select` used |
+| `api/app/analytics/models/sports/nhl/shot_model.py` | `SHOT_EVENTS` | Only `DEFAULT_EVENT_PROBS` used |
+| `api/app/analytics/services/mlb_rotation_service.py` | `defaultdict` | Not used anywhere in body |
+| `api/app/analytics/services/nba_rotation_weights.py` | `BASELINE_DEF_RATING`, `DEFAULT_EVENT_PROBS_SUFFIXED` | Entire NBA constants import block removed |
+| `api/app/analytics/services/ncaab_player_profiles.py` | `BASELINE_OFF_ORB_PCT` | ORB% handled via `ORB_CHANCE`; this baseline never accessed |
+| `api/app/analytics/services/nba_player_profiles.py` | `Any` from `typing` | No type annotations in this file use `Any` |
+| `api/app/analytics/services/nhl_player_profiles.py` | `Any` from `typing` | Same |
+| `api/app/analytics/services/nfl_drive_weights.py` | `BASELINE_TURNOVER_RATE` | Only EPA and success-rate baselines used for drive factor math |
+| `api/app/analytics/services/mlb_player_profiles.py` | `ProfileResult` | Imported from `profile_service` but never referenced in file body |
+| `api/app/analytics/api/analytics_routes.py` | `profile_to_pa_probabilities` | Imported but no call site in this module |
+
+### Remaining Patterns (Not Addressed)
+
+**Duplicate `_safe_float()` / `_safe_int()`** across:
+- `scraper/sports_scraper/golf/client.py` — `(val)` signature
+- `scraper/sports_scraper/live/nhl_advanced.py` — `(value, default)` signature (better)
+
+Recommend consolidating into `scraper/sports_scraper/utils/` in a future pass.
+
+**Per-sport parsing functions copied 3–4× each:**
+- `_parse_boxscore_response()` — NBA, NFL, MLB, NHL
+- `_parse_pbp_response()` — MLB, NFL, NHL, NCAAB
+- `_parse_player_stats()` — NBA, NFL, NCAAB
+- `_parse_team_players()` — NBA, MLB, NHL
+
+A `BaseSportParser` in `scraper/sports_scraper/live/base.py` could absorb the shared mechanics.

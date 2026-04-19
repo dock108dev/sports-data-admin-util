@@ -13,6 +13,107 @@ export type ScoreObject = {
   away: number;
 };
 
+/** Canonical game status matching backend GameStatus enum (lowercase wire values). */
+export type GameStatus =
+  | "scheduled"
+  | "pregame"
+  | "live"
+  | "final"
+  | "archived"
+  | "postponed"
+  | "cancelled";
+
+/** SSE event payload received from game:{gameId}:summary channel. */
+export type LiveGameEvent = {
+  type: "patch" | "phase_change" | "game_patch" | "epoch_changed" | "subscribed" | "error";
+  channel?: string;
+  seq?: number;
+  boot_epoch?: string;
+  ts?: number;
+  /** patch / game_patch fields — score/clock differential update */
+  gameId?: number;
+  score?: ScoreObject;
+  clock?: string;
+  status?: GameStatus;
+  /** phase_change fields — game period/status transition */
+  game_phase?: string;
+  /** epoch_changed field — new server boot epoch */
+  epoch?: string;
+};
+
+// =============================================================================
+// FairBet / live odds types (SSE + hook)
+// =============================================================================
+
+export interface LiveBookOdds {
+  book: string;
+  price: number;
+  evPercent: number | null;
+  displayEv: number | null;
+  impliedProb: number | null;
+  isSharp: boolean;
+  evMethod: string | null;
+  evConfidenceTier: string | null;
+}
+
+/** Per-bet live odds snapshot returned by useLiveOdds. */
+export interface OddsSnapshot {
+  gameId: number;
+  leagueCode: string;
+  homeTeam: string;
+  awayTeam: string;
+  gameDate: string;
+  marketKey: string;
+  selectionKey: string;
+  lineValue: number;
+  marketCategory: string | null;
+  playerName: string | null;
+  description: string | null;
+  trueProb: number | null;
+  referencePrice: number | null;
+  oppositeReferencePrice: number | null;
+  estimatedSharpPrice: number | null;
+  extrapolationRefLine: number | null;
+  extrapolationDistance: number | null;
+  consensusBookCount: number | null;
+  consensusIqr: number | null;
+  perBookFairProbs: Record<string, number> | null;
+  books: LiveBookOdds[];
+  evMethod: string | null;
+  evConfidenceTier: string | null;
+  evDisabledReason: string | null;
+  hasFair: boolean;
+  confidence: number | null;
+  confidenceFlags: string[];
+}
+
+/** Aggregated EV summary for one game's live odds. */
+export interface EVAnalysis {
+  gameId: number;
+  totalBets: number;
+  positiveEvCount: number;
+  maxEv: number | null;
+  lastUpdatedAt: string | null;
+  diagnostics: Record<string, number>;
+}
+
+/** SSE event payload received from the fairbet:odds channel. */
+export type FairbetOddsEvent = {
+  type: "fairbet_patch" | "epoch_changed" | "subscribed" | "error";
+  channel?: string;
+  seq?: number;
+  boot_epoch?: string;
+  ts?: number;
+  /** Present on fairbet_patch events */
+  gameId?: number;
+  bets?: OddsSnapshot[];
+  total?: number;
+  lastUpdatedAt?: string | null;
+  evDiagnostics?: Record<string, number>;
+  /** Present on epoch_changed events */
+  epoch?: string;
+};
+
 // =============================================================================
 // Theory / strategy types
 // =============================================================================

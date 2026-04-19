@@ -104,7 +104,7 @@ class TestRealtimeEvent:
             channel="game:1:summary",
             seq=5,
             payload={"gameId": "1", "patch": {"status": "LIVE"}},
-            boot_epoch=1000000,
+            boot_epoch="test-epoch-abc",
             ts=1000,
         )
         d = event.to_dict()
@@ -112,7 +112,7 @@ class TestRealtimeEvent:
         assert d["channel"] == "game:1:summary"
         assert d["seq"] == 5
         assert d["ts"] == 1000
-        assert d["boot_epoch"] == 1000000
+        assert d["boot_epoch"] == "test-epoch-abc"
         assert d["gameId"] == "1"
         assert d["patch"] == {"status": "LIVE"}
 
@@ -122,11 +122,11 @@ class TestRealtimeEvent:
             channel="game:1:summary",
             seq=1,
             payload={},
-            boot_epoch=12345,
+            boot_epoch="test-epoch-12345",
         )
         d = event.to_dict()
         assert "boot_epoch" in d
-        assert d["boot_epoch"] == 12345
+        assert d["boot_epoch"] == "test-epoch-12345"
 
 
 # ---------------------------------------------------------------------------
