@@ -41,7 +41,7 @@ class UserOut(BaseModel):
 
 class CreateUserRequest(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=8, max_length=72)
     role: str = Field(default="user", pattern="^(user|admin)$")
 
 
@@ -58,7 +58,7 @@ class UpdateEmailRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=8, max_length=72)
 
 
 # ---------------------------------------------------------------------------

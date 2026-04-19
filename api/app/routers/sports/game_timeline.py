@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 # Flow version identifiers. See docs/gameflow/version-semantics.md.
 FLOW_VERSION = "v2-blocks"
-_LEGACY_FLOW_VERSION = "v2-moments"  # deprecated; accepted on read during transition window
 
 _GAME_STATUS_TO_FLOW_STATUS: dict[str, str] = {
     GameStatus.live.value: "IN_PROGRESS",
@@ -174,7 +173,7 @@ async def get_game_flow(
     flow_result = await session.execute(
         select(SportsGameFlow).where(
             SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version.in_([FLOW_VERSION, _LEGACY_FLOW_VERSION]),
+            SportsGameFlow.story_version == FLOW_VERSION,
             SportsGameFlow.moments_json.isnot(None),
         )
     )

@@ -191,6 +191,10 @@ class Settings(BaseSettings):
                 )
             if len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be at least 32 characters long.")
+            if not self.auth_enabled:
+                raise ValueError(
+                    "AUTH_ENABLED must not be False in production or staging."
+                )
         if self.rate_limit_requests <= 0 or self.rate_limit_window_seconds <= 0:
             raise ValueError("Rate limit settings must be positive integers.")
         if self.fairbet_odds_cache_ttl_seconds <= 0:

@@ -16,7 +16,7 @@ SportsGameFlow table stores:
 - moments_json: JSONB containing ordered list of condensed moments
 - moment_count: INTEGER for quick access
 - validated_at: TIMESTAMPTZ when validation passed
-- story_version: "v2-blocks"  (legacy rows carry "v2-moments"; see docs/gameflow/version-semantics.md)
+- story_version: "v2-blocks"
 - blocks_json: JSONB containing 4-7 narrative blocks
 - block_count: INTEGER for quick access
 - blocks_version: "v1-blocks"
@@ -81,7 +81,6 @@ def _extract_flow_score(blocks: list) -> tuple[int | None, int | None]:
 
 # Flow version identifiers. See docs/gameflow/version-semantics.md.
 FLOW_VERSION = "v2-blocks"
-_LEGACY_FLOW_VERSION = "v2-moments"  # deprecated; accepted on read during transition window
 BLOCKS_VERSION = "v1-blocks"
 
 
@@ -201,11 +200,10 @@ async def execute_finalize_moments(
             }
             return output
 
-    # Accept both current and legacy story_version during transition window.
     existing_result = await session.execute(
         select(SportsGameFlow).where(
             SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version.in_([FLOW_VERSION, _LEGACY_FLOW_VERSION]),
+            SportsGameFlow.story_version == FLOW_VERSION,
         )
     )
     existing_flow = existing_result.scalar_one_or_none()

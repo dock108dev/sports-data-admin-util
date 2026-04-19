@@ -106,7 +106,9 @@ What is legacy:
 - **Social post phase categorization.** The frontend's `GameFlowView` expects `SocialPostsByPhase` (pregame, inGame by segment, postgame). The backend stores `game_phase` on `TeamSocialPost` but it's nullable and the mapping logic (`tweet_mapper.py`) may not reliably categorize all posts. The `ExpandableSocialSections` component groups by phase — if `game_phase` is null, those posts fall into limbo. The backend needs to guarantee phase assignment for all mapped posts.
 - **Embedded social post IDs.** Blocks can reference `embedded_social_post_id` but the pipeline stage that assigns these (`embedded_tweets.py`) needs to actually resolve valid post IDs that the frontend can use. If the ID doesn't correspond to a real `TeamSocialPost`, the frontend renders "Social post #undefined" which is a trust problem.
 - **Data staleness.** The backend computes `dataStalenessState` at API response time via `data_freshness.py` with configurable thresholds (live: 60s stale / 300s very_stale, pregame: 600s / 1800s). But this field is nullable in the response schema. The frontend uses 7-day and 1-day thresholds for its own staleness indicators. These are two different staleness models talking past each other. SSOT needed.
-- **Score display convention.** Internal DB format is `[home, away]`. API swaps to `[away, home]` via `_swap_score()`. Frontend renders as "Away-Home". This works but is fragile — one missed swap in a new endpoint and scores are backwards. This convention should be documented as a hard contract, not a per-endpoint implementation detail.
+- **Score display convention.** Consumer endpoint uses `ScoreObject {home, away}` — explicit keys, no implicit ordering. `_swap_score()` is deleted. Admin endpoints still return `[int, int]` tuples; migrate on touch.
+
+  > **Resolved in `aidlc_1`:** `_swap_score()` deleted; `ScoreObject {home, away}` is the consumer wire contract. Per-endpoint score swaps are gone.
 
 ### Where the frontend is ahead of the backend
 
@@ -279,11 +281,15 @@ Timestamp fields (`lastScrapedAt`, `lastIngestedAt`, etc.) are all nullable. For
 
 ### Admin/app boundary confusion
 
-All game endpoints live under `/api/admin/sports/`. The consumer-facing game flow endpoint (`/games/{game_id}/flow`) is in the same router as admin pipeline controls. There is no `/api/v1/` or `/api/consumer/` namespace. When this becomes a consumer-facing product, the admin endpoints and consumer endpoints need clear separation — different auth requirements, different rate limits, different response shapes.
+> **Partially resolved in `aidlc_1`:** `/api/v1/` is live for the consumer game flow endpoint. Remaining game data endpoints still live under `/api/admin/sports/`; full consumer/admin split is Phase 2.
+
+The consumer-facing game flow endpoint is at `/api/v1/games/{id}/flow`. Admin pipeline controls remain under `/api/admin/sports/`. Full separation (different auth, different rate limits, different response shapes) is Phase 2 work.
 
 ### Score tuple convention
 
-Scores are `[int, int]` arrays with implicit ordering (API: away first, DB: home first). This swap happens in `_swap_score()` and is applied per-endpoint. Every new endpoint that returns scores must remember to swap. This is a class of bug waiting to happen repeatedly. Switch to `{home: int, away: int}` objects or at minimum document this as a hard contract with a shared helper that all score-returning endpoints must use.
+> **Resolved in `aidlc_1`:** `_swap_score()` deleted. Consumer endpoint uses `ScoreObject {home, away}`. Admin endpoints still return `[int, int]` tuples — migrate on touch per CLAUDE.md.
+
+~~Scores are `[int, int]` arrays with implicit ordering. This swap happens in `_swap_score()` and is applied per-endpoint.~~ The per-endpoint swap pattern is gone. `ScoreObject` is self-documenting.
 
 ### Overloaded JSONB fields
 

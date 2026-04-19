@@ -13,7 +13,6 @@ from app.db.flow import SportsGameFlow
 from app.db.sports import SportsGame, SportsGamePlay
 from app.routers.sports.game_timeline import (
     FLOW_VERSION,
-    _LEGACY_FLOW_VERSION,
     _GAME_STATUS_TO_FLOW_STATUS,
     _compute_eta_minutes,
     _to_score,
@@ -60,7 +59,7 @@ async def get_game_flow(
     flow_result = await session.execute(
         select(SportsGameFlow).where(
             SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version.in_([FLOW_VERSION, _LEGACY_FLOW_VERSION]),
+            SportsGameFlow.story_version == FLOW_VERSION,
             SportsGameFlow.blocks_json.isnot(None),
         )
     )

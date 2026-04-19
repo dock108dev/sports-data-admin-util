@@ -10,7 +10,7 @@
 ## API Conventions
 
 - **camelCase in responses.** All Pydantic response models use `Field(alias=...)` + `populate_by_name = True`. snake_case is internal; camelCase crosses the wire. Phase 2 adds a lint check for missing aliases.
-- **Score object, not tuple.** Target convention (Phase 2): `{home: int, away: int}` everywhere. Current tuple + `_swap_score()` pattern is deprecated. See `docs/research/pydantic-score-object-migration.md`.
+- **Score object, not tuple.** `ScoreObject {home: int, away: int}` is the wire contract on consumer endpoints. `_swap_score()` is deleted. Remaining admin endpoints still return tuples; migrate on touch. See `docs/research/pydantic-score-object-migration.md`.
 - **Non-nullable computed predicates.** `isLive`, `isFinal`, `isPregame` are booleans, never null. Nullable booleans force defensive checks on the client for no semantic reason.
 - **Versioned namespace.** Consumer endpoints under `/api/v1/`, admin under `/api/admin/`. Different auth, different rate limits, different response shapes allowed. See `docs/research/fastapi-api-versioning-patterns.md`.
 - **Explicit enums over magic strings.** Any finite set is a Pydantic `Enum`. Frontend receives string values; TS union types mirror them.

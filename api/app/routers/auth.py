@@ -52,12 +52,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 class SignupRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., min_length=8, description="Password (min 8 characters)")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (8–72 characters)")
 
 
 class LoginRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., description="Password")
+    password: str = Field(..., max_length=72, description="Password")
     remember_me: bool = Field(default=False, description="Issue a long-lived token (30 days)")
 
 
@@ -77,16 +77,16 @@ class MeResponse(BaseModel):
 
 class UpdateEmailRequest(BaseModel):
     email: EmailStr = Field(..., description="New email address")
-    password: str = Field(..., description="Current password for verification")
+    password: str = Field(..., max_length=72, description="Current password for verification")
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(..., description="Current password")
-    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    current_password: str = Field(..., max_length=72, description="Current password")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8–72 characters)")
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str = Field(..., description="Current password for verification")
+    password: str = Field(..., max_length=72, description="Current password for verification")
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -99,7 +99,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., description="Password reset token")
-    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8–72 characters)")
 
 
 class MagicLinkRequest(BaseModel):

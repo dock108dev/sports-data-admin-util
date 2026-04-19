@@ -39,8 +39,8 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - One namespace for consumer endpoints, one for admin.
 
 **Deliverables:**
-- [ ] Introduce `ScoreObject` Pydantic model `{home: int, away: int}` and migrate all score-returning endpoints off `[int, int]` tuples. See `docs/research/pydantic-score-object-migration.md`.
-- [ ] Delete `_swap_score()` helper once migration complete.
+- [x] Introduce `ScoreObject` Pydantic model `{home: int, away: int}` and migrate all score-returning endpoints off `[int, int]` tuples. See `docs/research/pydantic-score-object-migration.md`.
+- [x] Delete `_swap_score()` helper once migration complete.
 - [ ] Make `isLive`, `isFinal`, `isPregame` computed non-nullable booleans in `GameSummary`.
 - [ ] Audit all response schemas for missing camelCase `Field(alias=...)` declarations; add lint check.
 - [x] Dedupe `PipelineStage` enum: single source of truth in `services/pipeline/models.py`, imported by DB layer.

@@ -238,3 +238,124 @@ grep -r "BRIANDUMP" --include="*.md" --include="*.py" --include="*.ts" . \
   | grep -v "\.aidlc\|docs/audits"
   → 0 results
 ```
+
+---
+
+## Destructive Cleanup Pass — 2026-04-19 (third sweep)
+
+### 10. Stale `_swap_score` references removed from documentation
+
+**Problem:** Four documentation locations still described `_swap_score()` as a present, operative pattern after it was deleted in change #4:
+
+| File | Location | Stale content |
+|------|----------|---------------|
+| `DESIGN.md` | API Conventions, line 13 | "Current tuple + `_swap_score()` pattern is deprecated" |
+| `BRAINDUMP.md` | "Score display convention" bullet (~line 109) | "`_swap_score()` swap" described as active |
+| `BRAINDUMP.md` | "Score tuple convention" section (~line 284) | `_swap_score()` described as present mechanism |
+| `BRAINDUMP.md` | "Admin/app boundary confusion" section (~line 280) | "There is no `/api/v1/` namespace" — stale since `/api/v1/` is live |
+
+**Fix:**
+- `DESIGN.md` line 13: Reworded to state `ScoreObject` is the current contract and `_swap_score()` is deleted.
+- `BRAINDUMP.md` "Score display convention": Added `> Resolved in aidlc_1` note; updated description to current reality.
+- `BRAINDUMP.md` "Score tuple convention": Added `> Resolved in aidlc_1` note; struck through old description.
+- `BRAINDUMP.md` "Admin/app boundary confusion": Added `> Partially resolved in aidlc_1` note; updated description to reflect `/api/v1/` being live.
+
+### 11. ROADMAP.md Phase 2 deliverables marked complete
+
+**Problem:** Two Phase 2 items were left unchecked (`[ ]`) despite being completed in this branch:
+
+```
+- [ ] Introduce ScoreObject Pydantic model {home: int, away: int}...
+- [ ] Delete _swap_score() helper once migration complete.
+```
+
+**Fix:** Both marked `[x]`. Evidence: `grep -r "_swap_score" api/ scraper/ → 0 results`; `ScoreObject` is live in `api/app/routers/sports/schemas/game_flow.py`.
+
+---
+
+## SSOT Verification (final — 2026-04-19 third sweep)
+
+| Domain | Authoritative Source | Status |
+|--------|---------------------|--------|
+| `_swap_score` | Deleted | 0 references in `.py` files; CI lint gate enforces no reintroduction |
+| `ScoreObject` | `api/app/routers/sports/schemas/game_flow.py` | Live on consumer endpoint; admin tuple migration is Phase 2 on-touch |
+| ROADMAP Phase 2 status | `ROADMAP.md` | `ScoreObject` intro + `_swap_score` deletion both `[x]` |
+| BRAINDUMP descriptions | `BRAINDUMP.md` | Score convention and admin/app boundary sections updated with `aidlc_1` resolution notes |
+
+---
+
+## Sanity Check (2026-04-19 third sweep)
+
+```
+# _swap_score gone from all prose and code
+grep -r "_swap_score" --include="*.py" api/ scraper/
+  → 0 results (CI gate enforces this)
+
+# ROADMAP Phase 2 ScoreObject items both checked
+grep "_swap_score\|ScoreObject" ROADMAP.md
+  → [x] lines only
+
+# No stale "no /api/v1/" claims
+grep "no.*api/v1" BRAINDUMP.md
+  → 0 results
+```
+
+---
+
+## Destructive Cleanup Pass — 2026-04-19 (fourth sweep)
+
+### 12. `_LEGACY_FLOW_VERSION` transition shim deleted
+
+**Problem:** Four read-path queries used `.in_([FLOW_VERSION, _LEGACY_FLOW_VERSION])` to accept both
+`"v2-blocks"` and the deprecated `"v2-moments"` story_version. This is a backward-compat shim — the
+pipeline has written `"v2-blocks"` exclusively since `aidlc_1`; prod usage of `"v2-moments"` rows
+cannot be proven.
+
+**Per cleanup rules:** "Replace silent fallback with hard failure where appropriate" and "If prod usage
+cannot be proven, delete it."
+
+**Changes:**
+
+| File | Change |
+|------|--------|
+| `api/app/services/pipeline/stages/finalize_moments.py` | Deleted `_LEGACY_FLOW_VERSION` constant; removed comment from docstring |
+| `api/app/routers/sports/game_timeline.py` | Deleted `_LEGACY_FLOW_VERSION` constant; replaced `.in_([...])` with `== FLOW_VERSION` |
+| `api/app/routers/v1/games.py` | Removed `_LEGACY_FLOW_VERSION` import; replaced `.in_([...])` with `== FLOW_VERSION` |
+| `api/app/services/pipeline/backfill_embedded_tweets.py` | Deleted `_LEGACY_FLOW_VERSION` constant; replaced both `.in_([...])` queries with `== FLOW_VERSION` |
+
+**Effect:** Rows with `story_version = "v2-moments"` are now invisible to all read paths. Any such row
+in production will no longer surface in consumer or admin flow endpoints, forcing a pipeline re-run to
+regenerate a `"v2-blocks"` row. This is the intended hard-failure behavior.
+
+### 13. Stale test comment corrected
+
+`api/tests/pipeline/test_guardrails.py:78` comment `# Below MIN_BLOCKS (4)` updated to
+`# Below MIN_BLOCKS (3)` — constant was aligned to 3 earlier in `aidlc_1`.
+
+---
+
+## SSOT Verification (final — 2026-04-19 fourth sweep)
+
+| Domain | Authoritative Source | Status |
+|--------|---------------------|--------|
+| `_LEGACY_FLOW_VERSION` | Deleted | `grep -r "_LEGACY_FLOW_VERSION" --include="*.py" .` → 0 results |
+| Flow version read filter | `== FLOW_VERSION` (strict) | No `.in_()` version filters remain |
+| `MIN_BLOCKS` test comment | `test_guardrails.py:78` | Updated to `(3)` |
+
+---
+
+## Sanity Check (2026-04-19 fourth sweep)
+
+```
+# No _LEGACY_FLOW_VERSION in Python or TypeScript
+grep -r "_LEGACY_FLOW_VERSION\|v2-moments" --include="*.py" --include="*.ts" .
+  → 0 results
+
+# No .in_() version filters remain
+grep -rn "story_version.in_" --include="*.py" api/
+  → 0 results
+
+# MIN_BLOCKS comment is correct
+grep -n "MIN_BLOCKS" api/tests/pipeline/test_guardrails.py
+  → line 78: # Below MIN_BLOCKS (3)
+```

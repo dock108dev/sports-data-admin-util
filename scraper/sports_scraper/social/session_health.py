@@ -118,16 +118,16 @@ def _probe_impl(auth_token: str | None, ct0: str | None) -> SessionHealthResult:
             is_valid=False,
             checked_at=checked_at,
             failure_reason="indeterminate — neither login button nor home nav found",
-            auth_token_present=auth_present,
-            ct0_present=ct0_present,
+            auth_token_present=bool(auth_token),
+            ct0_present=bool(ct0),
         )
     except Exception as exc:
         return SessionHealthResult(
             is_valid=False,
             checked_at=checked_at,
             failure_reason=f"probe error: {exc}",
-            auth_token_present=auth_present,
-            ct0_present=ct0_present,
+            auth_token_present=bool(auth_token),
+            ct0_present=bool(ct0),
         )
     finally:
         try:
