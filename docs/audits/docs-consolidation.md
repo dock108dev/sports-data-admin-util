@@ -52,25 +52,25 @@ Full doc + AIDLC issue cross-reference pass. 64 files audited (up from 47 — 17
 
 ---
 
-#### `docs/research/x-scraping-alternatives.md` — DELETED
+#### `docs/archived/research/x-scraping-alternatives.md` — DELETED
 
-**Problem:** Fully redundant with `docs/research/x-twitter-data-alternatives.md`. Both documents covered the same five options (X API v2, Apify, Bright Data, Nitter, Social-Searcher) with nearly identical analysis. `x-twitter-data-alternatives.md` is the more complete version — it includes the hybrid approach architecture diagram, decision tree, and implementation pattern. The ADR (`x-twitter-alternative-decision.md`) already references `x-twitter-data-alternatives.md` as the evaluation source.
+**Problem:** Fully redundant with `docs/archived/research/x-twitter-data-alternatives.md`. Both documents covered the same five options (X API v2, Apify, Bright Data, Nitter, Social-Searcher) with nearly identical analysis. `x-twitter-data-alternatives.md` is the more complete version — it includes the hybrid approach architecture diagram, decision tree, and implementation pattern. The ADR (`x-twitter-alternative-decision.md`) already references `x-twitter-data-alternatives.md` as the evaluation source.
 
-**Fix:** Deleted `docs/research/x-scraping-alternatives.md`.
+**Fix:** Deleted `docs/archived/research/x-scraping-alternatives.md`.
 
 ---
 
-#### `docs/research/README.md` — CREATED
+#### `docs/archived/research/README.md` — CREATED
 
 **Problem:** 32 research documents had no navigation aid. New contributors had no way to discover which doc to read before implementing a given feature.
 
-**Fix:** Created `docs/research/README.md` with a categorized index organized by topic area: Event-Driven Architecture, Realtime & Pub/Sub, API & Schema Design, Database & Migrations, Narrative Pipeline, Quality & Grading, Social & Ingestion, Observability. Each entry states the question the doc answers.
+**Fix:** Created `docs/archived/research/README.md` with a categorized index organized by topic area: Event-Driven Architecture, Realtime & Pub/Sub, API & Schema Design, Database & Migrations, Narrative Pipeline, Quality & Grading, Social & Ingestion, Observability. Each entry states the question the doc answers.
 
 ---
 
 #### `docs/index.md`
 
-**Problem:** No link to the new `docs/research/README.md` from the top-level index.
+**Problem:** No link to the new `docs/archived/research/README.md` from the top-level index.
 
 **Fix:** Added a "Research" section at the bottom of `docs/index.md` linking to `research/README.md`.
 
@@ -242,7 +242,7 @@ All remaining docs were verified accurate against the current codebase:
 | `docs/audits/abend-handling.md` | Present. |
 | `docs/audits/security-audit.md` | Present. |
 | `docs/audits/ssot-cleanup.md` | Accurate. Describes exactly what was changed in `aidlc_1`. |
-| `docs/research/` (17 files) | Forward-looking research docs. Accuracy depends on implementation status of Phase 2–6 items. No claims made about current implementation state — these are design research docs. |
+| `docs/archived/research/` (17 files) | Forward-looking research docs. Accuracy depends on implementation status of Phase 2–6 items. No claims made about current implementation state — these are design research docs. |
 
 ---
 
@@ -252,7 +252,7 @@ All remaining docs were verified accurate against the current codebase:
 
 **No deletes:** Every doc file carries distinct content. There is overlap between root `ARCHITECTURE.md` (monorepo structure, data flow, component overview) and `docs/architecture.md` (operational depth, schema details, API endpoint reference), but they serve different audiences (system overview vs. developer reference) and are cross-linked appropriately.
 
-**Research docs:** 17 forward-looking research documents in `docs/research/` were not modified. They are proposals and analysis docs for Phase 2–6 implementation decisions, not descriptions of current behavior. Their content is accurate for their purpose (providing context before implementing a feature).
+**Research docs:** 17 forward-looking research documents in `docs/archived/research/` were not modified. They are proposals and analysis docs for Phase 2–6 implementation decisions, not descriptions of current behavior. Their content is accurate for their purpose (providing context before implementing a feature).
 
 ---
 

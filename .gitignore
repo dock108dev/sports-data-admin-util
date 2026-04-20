@@ -80,3 +80,4 @@ game_data/*
 
 # AIDLC working directory
 .aidlc/*
+docs/archived/*

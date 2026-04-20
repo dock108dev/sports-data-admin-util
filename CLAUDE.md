@@ -1,12 +1,12 @@
 # Claude Instructions
 
-Project: sports data + narrative pipeline. See `ARCHITECTURE.md`, `DESIGN.md`, `ROADMAP.md`, and `BRAINDUMP.md` for full context. Research docs in `docs/research/`.
+Project: sports data + narrative pipeline. See `ARCHITECTURE.md`, `DESIGN.md`, `ROADMAP.md`, and `BRAINDUMP.md` for full context. Research docs in `docs/archived/research/`.
 
 ## Before you change code
 
 - Read the relevant section of `ARCHITECTURE.md` for the component you're touching.
 - Check `ROADMAP.md` to see which phase the change belongs to — don't do Phase 4 work in a Phase 1 PR.
-- Check `docs/research/` for the topic. 17 docs cover the hard decisions (golden corpus, grading, LISTEN/NOTIFY, Redis Streams, OTel, etc.). Cite them in PR descriptions.
+- Check `docs/archived/research/` for the topic. 17 docs cover the hard decisions (golden corpus, grading, LISTEN/NOTIFY, Redis Streams, OTel, etc.). Cite them in PR descriptions.
 
 ## Project conventions (enforce these in every change)
 
@@ -21,7 +21,7 @@ Project: sports data + narrative pipeline. See `ARCHITECTURE.md`, `DESIGN.md`, `
 - SQLAlchemy 2.0 async, `Mapped[...]` annotations.
 - Every FK declares `ondelete`.
 - JSONB only for genuinely flexible blobs — if you query on it, it's a column.
-- Enum changes: add-then-rename, not in-place drop. See `docs/research/alembic-enum-sync-strategies.md`.
+- Enum changes: add-then-rename, not in-place drop. See `docs/archived/research/alembic-enum-sync-strategies.md`.
 
 ### Celery
 - Queue per concern (`sports-scraper`, `social-scraper`, `social-bulk`, `training`).

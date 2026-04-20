@@ -16,12 +16,12 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Every generated flow has a populated `mini_box` for all blocks.
 
 **Deliverables:**
-- [x] Replace daily 4:30–6:30 AM flow schedule with event-driven dispatch on FINAL transition (+5 min delay for PBP settle). See `docs/research/event-driven-celery-task-dispatch.md`.
+- [x] Replace daily 4:30–6:30 AM flow schedule with event-driven dispatch on FINAL transition (+5 min delay for PBP settle). See `docs/archived/research/event-driven-celery-task-dispatch.md`.
 - [x] Add ORM-level `after_flush`/`after_commit` hook on `Game.status` transitions that enqueues `generate_flow` Celery task.
 - [x] Add Redis `SET NX` lock keyed on `game_id` to prevent duplicate dispatches from retry paths.
-- [x] Build golden corpus: 10 games per sport (NBA, NHL, MLB, NFL, NCAAB) with human-validated narrative outputs. See `docs/research/golden-corpus-construction-methodology.md`.
+- [x] Build golden corpus: 10 games per sport (NBA, NHL, MLB, NFL, NCAAB) with human-validated narrative outputs. See `docs/archived/research/golden-corpus-construction-methodology.md`.
 - [x] Add `pytest` CI gate that runs the pipeline against the corpus and diffs outputs against reference on every PR.
-- [x] Add coverage validation: assert every flow mentions final score, winning team, and OT if applicable. See `docs/research/nlg-coverage-validation-techniques.md`.
+- [x] Add coverage validation: assert every flow mentions final score, winning team, and OT if applicable. See `docs/archived/research/nlg-coverage-validation-techniques.md`.
 - [x] Add `mini_box` population audit in `validate_blocks.py` — reject any block missing cumulative stats + segment deltas.
 - [x] Align block count constraints: MIN=3 (blowouts) enforced in both `block_types.py` and `guardrails.ts`.
 - [ ] Add a "recap pending" consumer-facing state with ETA instead of 404 on missing flows.
@@ -39,7 +39,7 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - One namespace for consumer endpoints, one for admin.
 
 **Deliverables:**
-- [x] Introduce `ScoreObject` Pydantic model `{home: int, away: int}` and migrate all score-returning endpoints off `[int, int]` tuples. See `docs/research/pydantic-score-object-migration.md`.
+- [x] Introduce `ScoreObject` Pydantic model `{home: int, away: int}` and migrate all score-returning endpoints off `[int, int]` tuples. See `docs/archived/research/pydantic-score-object-migration.md`.
 - [x] Delete `_swap_score()` helper once migration complete.
 - [x] Make `isLive`, `isFinal`, `isPregame` computed non-nullable booleans in `GameSummary`.
 - [x] Audit all response schemas for missing camelCase `Field(alias=...)` declarations; add lint check.
@@ -47,7 +47,7 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - [x] Remove `cancelled`/`canceled` duplicate entry in `GameStatus` enum. Canonical value is `CANCELLED`.
 - [x] Introduce `/api/v1/` router namespace for consumer endpoints. Game flow endpoint live at `/api/v1/games/{id}/flow`.
 - [x] Split auth middleware: consumer keys vs admin keys with different rate limits.
-- [x] Add JSONB schema validation for `external_ids`, `external_codes` at write time. See `docs/research/jsonb-schema-validation-postgres.md`.
+- [x] Add JSONB schema validation for `external_ids`, `external_codes` at write time. See `docs/archived/research/jsonb-schema-validation-postgres.md`.
 - [x] Document `story_version` vs `blocks_version` semantics; renamed `v2-moments` to `v2-blocks`. See `docs/gameflow/version-semantics.md`.
 
 ---
@@ -62,11 +62,11 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Embedded post IDs always resolve to real posts.
 
 **Deliverables:**
-- [ ] Add Playwright session health probe that runs every 30 min and alerts on cookie expiration. See `docs/research/playwright-session-health-monitoring.md`.
+- [ ] Add Playwright session health probe that runs every 30 min and alerts on cookie expiration. See `docs/archived/research/playwright-session-health-monitoring.md`.
 - [x] Add `UNKNOWN` value to `GamePhase` enum; update `tweet_mapper.py` to assign it rather than null when phase can't be inferred.
 - [x] Add `NOT NULL` constraint on `TeamSocialPost.game_phase` via Alembic migration (after backfill).
 - [ ] Add DB-side validation in `embedded_tweets.py` — verify `embedded_social_post_id` exists in `TeamSocialPost` before persisting the block.
-- [x] Evaluate alternative X/Twitter data sources and prototype one. See `docs/research/x-twitter-data-alternatives.md`.
+- [x] Evaluate alternative X/Twitter data sources and prototype one. See `docs/archived/research/x-twitter-data-alternatives.md`.
 - [ ] Add circuit breaker telemetry (tripped count, last trip reason) to the admin dashboard.
 - [ ] Drop unused `likesCount`, `retweetsCount`, `repliesCount` from `SocialPostEntry` response or add them to frontend type.
 - [ ] Validate `mediaType` as enum `"video" | "image" | null` in both Pydantic model and SQL constraint.
@@ -82,7 +82,7 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Pagerable alerts exist for each trust-killing failure mode.
 
 **Deliverables:**
-- [x] Instrument FastAPI + Celery with OpenTelemetry traces/metrics. See `docs/research/opentelemetry-for-pipeline-observability.md`.
+- [x] Instrument FastAPI + Celery with OpenTelemetry traces/metrics. See `docs/archived/research/opentelemetry-for-pipeline-observability.md`.
 - [x] Export pipeline stage durations, regeneration count, fallback rate per sport.
 - [ ] Grafana dashboard: "% of final games from yesterday with flows" by sport.
 - [ ] Grafana dashboard: quality score histogram + fallback rate time series.
@@ -103,10 +103,10 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Live scores and odds propagate to browser in <5s without client polling.
 
 **Deliverables:**
-- [x] Replace DB poller in `realtime/poller.py` with Postgres `LISTEN/NOTIFY` triggered by ingestion writers. See `docs/research/postgres-listen-notify-python.md` and `docs/research/celery-event-driven-vs-beat-scheduling.md`.
-- [ ] Move pub/sub manager from in-memory to Redis Streams for multi-process fanout. See `docs/research/redis-pubsub-vs-streams-for-realtime.md`.
+- [x] Replace DB poller in `realtime/poller.py` with Postgres `LISTEN/NOTIFY` triggered by ingestion writers. See `docs/archived/research/postgres-listen-notify-python.md` and `docs/archived/research/celery-event-driven-vs-beat-scheduling.md`.
+- [ ] Move pub/sub manager from in-memory to Redis Streams for multi-process fanout. See `docs/archived/research/redis-pubsub-vs-streams-for-realtime.md`.
 - [ ] Preserve sequence tracking + boot epoch semantics on Redis-backed manager.
-- [ ] Build `useLiveGameScore(gameId)` React hook over SSE with reconnection + backfill. See `docs/research/websocket-sse-react-integration-patterns.md`.
+- [ ] Build `useLiveGameScore(gameId)` React hook over SSE with reconnection + backfill. See `docs/archived/research/websocket-sse-react-integration-patterns.md`.
 - [ ] Build `useLiveOdds(gameId)` hook; wire into FairBet live views.
 - [ ] Switch game-detail page to differential updates (patches) for score/clock, full refetch only on period change.
 - [ ] Load-test: 500 concurrent SSE subscribers on a single API instance.
@@ -123,10 +123,10 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Anti-generic scoring catches "both teams traded baskets"-class language.
 
 **Deliverables:**
-- [ ] Build 3-tier LLM grader: Haiku for fast screen, Sonnet for ambiguous cases, human review queue for corpus expansion. See `docs/research/llm-narrative-grading-patterns.md` and `docs/research/sports-narrative-quality-benchmarks.md`.
+- [ ] Build 3-tier LLM grader: Haiku for fast screen, Sonnet for ambiguous cases, human review queue for corpus expansion. See `docs/archived/research/llm-narrative-grading-patterns.md` and `docs/archived/research/sports-narrative-quality-benchmarks.md`.
 - [ ] Integrate grader into pipeline as gate between quality scoring and publish — low LLM grade triggers regen with error context.
 - [ ] Feed quality-score breakdown into regen prompt so second attempt knows what failed.
-- [ ] Add sport-specific block templates (NBA run-based, MLB inning-based, NHL period-based, NFL drive-based, NCAAB tournament-aware). See `docs/research/sport-specific-narrative-structure.md`.
+- [ ] Add sport-specific block templates (NBA run-based, MLB inning-based, NHL period-based, NFL drive-based, NCAAB tournament-aware). See `docs/archived/research/sport-specific-narrative-structure.md`.
 - [ ] Add RESOLUTION block specificity check: must reference at least one specific play from final 2 min / final inning / final period.
 - [ ] Add anti-generic detector beyond cliche list — flag content-free phrases via LLM classifier.
 - [ ] Expand golden corpus to 25 games per sport including edge cases: OT, shootouts, perfect games, blowouts, comebacks, ejections.
