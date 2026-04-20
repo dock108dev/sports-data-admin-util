@@ -20,6 +20,9 @@ sda.dock108.dev {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
+		# Twitter embeds require platform.twitter.com for scripts and frames.
+		# 'unsafe-inline' on style-src is required by Next.js RSC hydration.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://platform.twitter.com; frame-src https://platform.twitter.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.twitter.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
 	}
 
 	# ── FastAPI backend ──────────────────────────────────────────

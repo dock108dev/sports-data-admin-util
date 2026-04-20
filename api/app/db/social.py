@@ -57,9 +57,6 @@ class TeamSocialPost(Base):
         DateTime(timezone=True), nullable=False, index=True
     )
     tweet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    likes_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    retweets_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    replies_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     has_video: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), nullable=False
     )
@@ -77,8 +74,8 @@ class TeamSocialPost(Base):
     mapping_status: Mapped[str] = mapped_column(
         String(20), server_default="unmapped", nullable=False, index=True
     )
-    game_phase: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default=None, index=True
+    game_phase: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="unknown", index=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

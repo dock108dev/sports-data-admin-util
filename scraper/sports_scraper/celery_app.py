@@ -10,7 +10,14 @@ from celery.schedules import crontab
 from .config import settings
 from .db import db_models, get_session
 from .logging import logger
+from .odds.metrics import init_odds_metrics
+from .telemetry import init_telemetry
 from .utils.datetime_utils import now_utc
+
+# Must be called before Celery app creation so CeleryInstrumentor hooks in.
+# No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+init_telemetry(environment=settings.environment)
+init_odds_metrics()
 
 HOLD_KEY = "sports:tasks_held"
 
@@ -97,7 +104,11 @@ app = Celery(
     "sports-data-scraper",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["sports_scraper.jobs.tasks"],
+    include=[
+        "sports_scraper.jobs.tasks",
+        "sports_scraper.jobs.session_health_task",
+        "sports_scraper.jobs.grader_task",
+    ],
 )
 # Set the default Task class for ALL tasks including @shared_task.
 # task_cls in the constructor only applies to @app.task, not @shared_task.
@@ -118,27 +129,32 @@ app.conf.task_routes = {
     "sync_mainline_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "sync_prop_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "sweep_missing_flows": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Game social collection every 30 min (odds-gated + staleness targeting)
     "collect_game_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    # Session health probe — runs on social-scraper to share the same IP/session
+    "check_playwright_session_health": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     # MLB advanced stats (Statcast-derived, post-game)
     "ingest_mlb_advanced_stats": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Live orchestrator + live odds polling
     "live_orchestrator_tick": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_odds_mainline": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_odds_props": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    # Narrative quality grader (dispatched by API finalize_moments stage)
+    "grade_flow_task": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
 }
 # Daily pipeline schedule (all times US Eastern / UTC during EST):
 #
 #   3:30 AM EST (08:30 UTC) — Sports ingestion (NBA → NHL → NCAAB → MLB sequentially)
 #   4:00 AM EST (09:00 UTC) — Daily sweep (truth repair, backfill missing data)
-#   4:30 AM EST (09:30 UTC) — NBA flow generation
-#   5:00 AM EST (10:00 UTC) — NHL flow generation
-#   5:30 AM EST (10:30 UTC) — NCAAB flow generation
-#   6:00 AM EST (11:00 UTC) — MLB flow generation
+#   7:00 AM EST (12:00 UTC) — Flow missing sweep (safety-net for hook misfire)
 #
-# Each job is spaced 30 minutes apart. During EDT (March-November) all times
-# shift 1 hour later (e.g., ingestion at 4:30 AM EDT).
+# Flow generation is event-driven: the ORM hook in api/app/db/hooks.py dispatches
+# trigger_flow_for_game on every LIVE→FINAL transition. sweep_missing_flows is the
+# daily fallback for any games the hook missed. The NX lock prevents double-dispatch.
+#
+# During EDT (March-November) all times shift 1 hour later.
 #
 # High-frequency polling (every 60s, staggered 15s apart via countdown):
 #   :00  update_game_states  — disabled 3–11 AM EST (08–16 UTC)
@@ -198,35 +214,6 @@ _scheduled_tasks = {
         "schedule": crontab(minute=30, hour=8),  # 3:30 AM EST = 08:30 UTC
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "daily-nba-flow-generation-430am-eastern": {
-        "task": "run_scheduled_nba_flow_generation",
-        "schedule": crontab(minute=30, hour=9),  # 4:30 AM EST = 09:30 UTC (+30 min after sweep)
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "daily-nhl-flow-generation-5am-eastern": {
-        "task": "run_scheduled_nhl_flow_generation",
-        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC (+30 min after NBA flow)
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "daily-ncaab-flow-generation-530am-eastern": {
-        "task": "run_scheduled_ncaab_flow_generation",
-        "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (+30 min after NHL flow)
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "daily-mlb-flow-generation-6am-eastern": {
-        "task": "run_scheduled_mlb_flow_generation",
-        "schedule": crontab(
-            minute=0, hour=11
-        ),  # 6:00 AM EST = 11:00 UTC (+30 min after NCAAB flow)
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "daily-nfl-flow-generation-630am-eastern": {
-        "task": "run_scheduled_nfl_flow_generation",
-        "schedule": crontab(
-            minute=30, hour=11
-        ),  # 6:30 AM EST = 11:30 UTC (+30 min after MLB flow)
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
     # === Golf (DataGolf API) ===
     "golf-schedule-daily-7am-eastern": {
         "task": "golf_sync_schedule",
@@ -275,6 +262,14 @@ _scheduled_tasks = {
         "schedule": crontab(minute=0, hour=9),  # 4:00 AM EST = 09:00 UTC (+30 min after ingestion)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    # === Flow missing sweep (safety-net for LIVE→FINAL hook misfire) ===
+    # Runs after ingestion + sweep have settled. Finds FINAL games with no artifact
+    # and re-enqueues trigger_flow_for_game; NX lock prevents double-dispatch.
+    "flow-missing-sweep-7am-eastern": {
+        "task": "sweep_missing_flows",
+        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
     # === Analytics: outcome recording + batch sims (noon–3 AM ET = 17–08 UTC) ===
     # Runs every 30 min during active sports hours. Dispatches to the API
     # worker's "celery" queue (same Redis broker, different Celery app).
@@ -291,6 +286,16 @@ _scheduled_tasks = {
         "schedule": crontab(minute=5),  # :05 past each hour (avoids :00 pile-up)
         "options": {"queue": "celery", "routing_key": "celery", "expires": 3300},
     },
+    # === Pipeline coverage report (daily 06:00 UTC) ===
+    # Writes a PipelineCoverageReport row summarising FINAL games vs flows for
+    # yesterday, broken down by sport.  Re-running overwrites the same-day row.
+    # Runs after ingestion (03:30 UTC) and flow sweep (07:00 EST / 12:00 UTC)
+    # have had time to settle, but early enough for the admin morning review.
+    "pipeline-coverage-report-daily-6am-utc": {
+        "task": "generate_pipeline_coverage_report",
+        "schedule": crontab(minute=0, hour=6),  # 06:00 UTC
+        "options": {"queue": "celery", "routing_key": "celery", "expires": 3300},
+    },
 }
 
 # Social polling — game social collection every 30 min, mapping staggered at :15/:45
@@ -304,6 +309,14 @@ _live_polling_schedule = {
         "task": "map_social_to_games",
         "schedule": crontab(minute="15,45"),
         "options": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE, "expires": 1500},
+    },
+    # Playwright session health probe — every 30 min, staggered at :10/:40 so
+    # it doesn't compete with game-social at :00/:30.  Expires at 28 min so a
+    # slow queue never runs a stale probe from the previous cycle.
+    "playwright-session-health-every-30m": {
+        "task": "check_playwright_session_health",
+        "schedule": crontab(minute="10,40"),
+        "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE, "expires": 1680},
     },
 }
 
@@ -409,6 +422,15 @@ def on_worker_ready(sender=None, **kwargs):
 
     clear_all_locks()
     mark_stale_runs_interrupted()
+
+    # Run an immediate health probe on startup so circuit breaker state is
+    # populated before the first beat-scheduled probe fires at :10/:40.
+    # Dispatch async so it doesn't block worker initialisation.
+    try:
+        app.send_task("check_playwright_session_health", queue=SOCIAL_QUEUE)
+        logger.info("playwright_session_health_startup_probe_dispatched")
+    except Exception:
+        logger.warning("playwright_session_health_startup_probe_dispatch_failed", exc_info=True)
 
 
 @signals.worker_shutting_down.connect

@@ -20,6 +20,7 @@ import { NCAABAdvancedStatsSection } from "./NCAABAdvancedStatsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
 import { PipelineRunsSection } from "./PipelineRunsSection";
+import { useLiveGameScore } from "@/lib/hooks/useLiveGameScore";
 import { flattenStats, FieldLabel } from "./gameDetailUtils";
 import styles from "./styles.module.css";
 
@@ -32,6 +33,12 @@ export default function GameDetailClient() {
   const [error, setError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<"resync" | null>(null);
+
+  // Always call the hook (Rules of Hooks); only use its output for live games.
+  const liveScore = useLiveGameScore(gameIdParam);
+  const isLive = game?.game.status === "live";
+  const displayHomeScore = (isLive && liveScore.score != null) ? liveScore.score.home : game?.game.score?.home ?? null;
+  const displayAwayScore = (isLive && liveScore.score != null) ? liveScore.score.away : game?.game.score?.away ?? null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,7 +123,7 @@ export default function GameDetailClient() {
               )}
             </strong>
             <span>Away</span>
-            <span><FieldLabel label={String(g.awayScore ?? "—")} field="awayScore" /></span>
+            <span><FieldLabel label={String(displayAwayScore ?? "—")} field="awayScore" /></span>
           </div>
           <div>
             <strong>
@@ -129,8 +136,16 @@ export default function GameDetailClient() {
               )}
             </strong>
             <span>Home</span>
-            <span><FieldLabel label={String(g.homeScore ?? "—")} field="homeScore" /></span>
+            <span><FieldLabel label={String(displayHomeScore ?? "—")} field="homeScore" /></span>
           </div>
+          {isLive && liveScore.clock && (
+            <div style={{ fontSize: "0.85rem", color: "#64748b", alignSelf: "center" }}>
+              {liveScore.clock}
+              {liveScore.isConnected && (
+                <span style={{ marginLeft: "0.4rem", color: "#22c55e" }}>●</span>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           {statusFlags.map((f) => (
@@ -304,7 +319,7 @@ export default function GameDetailClient() {
 
       <PbpSection plays={game.plays || []} groupedPlays={game.groupedPlays} leagueCode={g.leagueCode} />
 
-      <FlowSection gameId={g.id} hasFlow={g.hasFlow} leagueCode={g.leagueCode} />
+      <FlowSection gameId={g.id} hasFlow={g.hasFlow} leagueCode={g.leagueCode} gameStatus={g.status} />
 
       <PipelineRunsSection gameId={g.id} />
 

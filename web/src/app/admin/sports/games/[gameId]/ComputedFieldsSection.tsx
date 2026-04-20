@@ -4,7 +4,7 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import {
   METRIC_GROUPS,
   OUTCOME_KEYS,
-  formatMetricValue,
+  formatComputedFieldValue,
   getOutcomeBadgeClass,
 } from "./gameDetailUtils";
 import styles from "./styles.module.css";
@@ -32,7 +32,7 @@ export function ComputedFieldsSection({ derivedMetrics }: ComputedFieldsSectionP
                 <div className={styles.metricGroupLabel}>{group.label}</div>
                 {present.map((k) => {
                   const isOutcome = OUTCOME_KEYS.has(k);
-                  const formatted = formatMetricValue(k, metrics[k]);
+                  const formatted = formatComputedFieldValue(k, metrics[k]);
                   return (
                     <div key={k} className={styles.metricRow}>
                       <span className={styles.metricKey}>{k}</span>
@@ -55,7 +55,7 @@ export function ComputedFieldsSection({ derivedMetrics }: ComputedFieldsSectionP
               {ungroupedKeys.map((k) => (
                 <div key={k} className={styles.metricRow}>
                   <span className={styles.metricKey}>{k}</span>
-                  <span className={styles.metricValue}>{formatMetricValue(k, metrics[k])}</span>
+                  <span className={styles.metricValue}>{formatComputedFieldValue(k, metrics[k])}</span>
                 </div>
               ))}
             </div>

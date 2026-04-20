@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 class GameStatus(str, Enum):
     """Canonical game status lifecycle.
 
-    Happy path: scheduled → pregame → live → final → archived
+    Happy path: scheduled → pregame → live → final → recap_pending → recap_ready
     """
 
     scheduled = "scheduled"
@@ -47,7 +47,10 @@ class GameStatus(str, Enum):
     final = "final"
     archived = "archived"  # Data complete, flows generated, >7 days old
     postponed = "postponed"
-    canceled = "canceled"
+    CANCELLED = "cancelled"
+    recap_pending = "recap_pending"  # Flow generation dispatched and in progress
+    recap_ready = "recap_ready"      # Flow generated successfully
+    recap_failed = "recap_failed"    # Flow generation failed; eligible for retry via sweep
 
 
 class SportsLeague(Base):
@@ -144,7 +147,7 @@ class SportsPlayer(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     league_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("sports_leagues.id"),
+        ForeignKey("sports_leagues.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -154,7 +157,7 @@ class SportsPlayer(Base):
     sweater_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     team_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sports_teams.id"),
+        ForeignKey("sports_teams.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -233,6 +236,7 @@ class SportsGame(Base):
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
+    odds_api_event_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     social_scrape_1_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -491,13 +495,13 @@ class SportsGamePlay(Base):
     play_index: Mapped[int] = mapped_column(Integer, nullable=False)
     play_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     team_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("sports_teams.id"), nullable=True
+        Integer, ForeignKey("sports_teams.id", ondelete="SET NULL"), nullable=True
     )
     player_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     player_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     player_ref_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sports_players.id"),
+        ForeignKey("sports_players.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

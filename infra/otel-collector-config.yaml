@@ -1,0 +1,45 @@
+# OpenTelemetry Collector configuration for local dev and production.
+#
+# Receives OTLP over gRPC (port 4317) and HTTP (port 4318) from API and scraper
+# workers, then fans out traces to Grafana Tempo and metrics to Prometheus.
+# Adjust exporters to point at Honeycomb or Datadog for managed observability.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  # Debug exporter: logs spans/metrics to collector stdout.
+  # Useful in local dev; remove or gate on environment in production.
+  debug:
+    verbosity: basic
+
+  # Grafana Tempo — traces (gRPC, insecure within the internal network)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Prometheus — metrics scraped by Prometheus on port 8889
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

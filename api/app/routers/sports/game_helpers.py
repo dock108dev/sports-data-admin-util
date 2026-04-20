@@ -18,7 +18,8 @@ from ...db.sports import GameStatus, SportsGame, SportsLeague, SportsTeam
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
 from ...services.game_status import compute_status_flags
 from ...utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
-from .schemas import GameSummary, JobResponse, LiveSnapshot, ScrapeRunConfig, SocialPostEntry
+from .schemas import GameSummary, JobResponse, LiveSnapshot, ScrapeRunConfig, ScoreObject, SocialPostEntry
+from .schemas.common import _score_obj
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def apply_game_filters(
 ) -> Select[tuple[SportsGame]]:
     """Apply filtering options for list endpoints."""
     if not include_canceled:
-        _EXCLUDED_STATUSES = (GameStatus.canceled.value, GameStatus.postponed.value)
+        _EXCLUDED_STATUSES = (GameStatus.CANCELLED.value, GameStatus.postponed.value)
         stmt = stmt.where(SportsGame.status.notin_(_EXCLUDED_STATUSES))
 
     if final_only:
@@ -284,8 +285,7 @@ def summarize_game(
         live_snapshot = LiveSnapshot(
             period_label=current_period_label,
             time_label=time_label(current_period, game_clock_val, league_code),
-            home_score=game.home_score,
-            away_score=game.away_score,
+            score=_score_obj(game.home_score, game.away_score),
             current_period=current_period,
             game_clock=game_clock_val,
         )
@@ -301,8 +301,7 @@ def summarize_game(
         status=game.status,
         home_team=game.home_team.name,
         away_team=game.away_team.name,
-        home_score=game.home_score,
-        away_score=game.away_score,
+        score=_score_obj(game.home_score, game.away_score),
         current_period=current_period,
         game_clock=game_clock_val,
         has_boxscore=has_boxscore,
@@ -328,9 +327,6 @@ def summarize_game(
         home_team_color_dark=matchup_colors["homeDarkHex"],
         away_team_color_light=matchup_colors["awayLightHex"],
         away_team_color_dark=matchup_colors["awayDarkHex"],
-        is_live=status_flags["is_live"],
-        is_final=status_flags["is_final"],
-        is_pregame=status_flags["is_pregame"],
         is_truly_completed=status_flags["is_truly_completed"],
         read_eligible=status_flags["read_eligible"],
         current_period_label=current_period_label,
@@ -351,17 +347,12 @@ def resolve_team_abbreviation(game: SportsGame, post: TeamSocialPost) -> str:
     raise ValueError(f"Cannot resolve team abbreviation for post {post.id} in game {game.id}")
 
 
-def _total_interactions(post: TeamSocialPost) -> int:
-    """Sum engagement metrics for sorting priority."""
-    return (post.likes_count or 0) + (post.retweets_count or 0) + (post.replies_count or 0)
-
-
 def serialize_social_posts(
     game: SportsGame,
     posts: Sequence[TeamSocialPost],
 ) -> list[SocialPostEntry]:
-    """Serialize social posts for API responses, sorted by total interactions desc."""
-    sorted_posts = sorted(posts, key=_total_interactions, reverse=True)
+    """Serialize social posts for API responses, sorted by posted_at desc."""
+    sorted_posts = sorted(posts, key=lambda p: p.posted_at, reverse=True)
     entries: list[SocialPostEntry] = []
     for post in sorted_posts:
         entries.append(
@@ -377,9 +368,6 @@ def serialize_social_posts(
                 source_handle=post.source_handle,
                 media_type=post.media_type,
                 game_phase=post.game_phase,
-                likes_count=post.likes_count,
-                retweets_count=post.retweets_count,
-                replies_count=post.replies_count,
             )
         )
     return entries

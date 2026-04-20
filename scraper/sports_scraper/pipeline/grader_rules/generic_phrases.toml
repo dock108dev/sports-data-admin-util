@@ -1,0 +1,88 @@
+# generic_phrases.toml — versioned list of generic sports filler phrases.
+#
+# Purpose: detect AI-generated generic narrative in game recaps (ISSUE-047).
+# Detection: case-insensitive substring match per block of narrative text.
+#
+# HOW TO ADD PHRASES
+# ------------------
+# Add the phrase under the appropriate key in [phrases], or add a new key.
+# Commit with a message explaining why: e.g. "add 'put up a fight' — detected
+# in 3 NBA recaps where LLM defaulted to this when no specific play data existed".
+#
+# NOTE: phrase category keys live under [phrases] to separate them from [config].
+
+[config]
+version = "1"
+# Tier-1 grader: points deducted per matched phrase per block
+phrase_weight = 3.0
+# validate_blocks.py: warning threshold (phrase matches per 100 words)
+density_threshold = 2.0
+
+[phrases]
+# ── EFFORT CLICHÉS ───────────────────────────────────────────────────────────
+# Added: these describe effort without naming a player or specific play.
+# LLMs without concrete game data default to these patterns to meet length targets.
+effort_cliches = [
+    "gave it their all",
+    "showed a lot of heart",
+    "the team showed heart",
+    "left it all on the floor",
+    "left it all on the field",
+    "left it all on the ice",
+    "gave 110 percent",
+    "played their hearts out",
+    "gritted their teeth",
+    "gutsy performance",
+    "dug deep",
+    "answered the call",
+    "rose to the occasion",
+]
+
+# ── OUTCOME CLICHÉS ──────────────────────────────────────────────────────────
+# Added: these summarize results without capturing any specific moment.
+# Indicate the LLM filled narrative gaps without referencing actual plays.
+outcome_cliches = [
+    "made their mark",
+    "made a statement tonight",
+    "the rest is history",
+    "a hard-fought battle",
+    "a hard fought battle",
+    "a closely contested",
+    "when it mattered most",
+    "proved too much",
+    "stood tall",
+]
+
+# ── NARRATIVE FILLER ─────────────────────────────────────────────────────────
+# Added: add word count without advancing the narrative arc.
+# Characteristic of LLM padding when the model is stretching for length.
+narrative_filler = [
+    "in what was a",
+    "none other than",
+    "throughout the contest",
+    "from start to finish",
+    "stepped up to the plate",
+    "it was a testament to",
+    "was a testament to",
+    "showcased their talent",
+    "delivered a masterclass",
+    "put on a show",
+    "put on a display",
+    "a masterful performance",
+    "a dominant display",
+    "put up a fight",
+    "stole the show",
+    "sparked by the energy",
+]
+
+[density]
+# Token Jaccard similarity threshold per sport; range [0, 1], lower = stricter.
+# Flows whose entity-stripped narrative meets or exceeds this similarity with the
+# sport fallback template are flagged as content-free (template regurgitation).
+# Calibrated against 5 synthetic samples: 3 high-density narratives (pass) and
+# 2 template-derived content-free samples (fail). See ISSUE-056.
+default = 0.60
+nfl = 0.60
+nba = 0.60
+mlb = 0.60
+nhl = 0.60

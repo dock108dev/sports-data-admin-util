@@ -16,6 +16,7 @@ from ..config import settings
 from ..logging import logger
 from ..utils.datetime_utils import date_to_utc_datetime, now_utc
 from .exceptions import XCircuitBreakerError
+from .metrics import increment_scrape_result
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
@@ -215,10 +216,13 @@ class TeamTweetCollector:
                 window_end=window_end,
                 known_post_ids=recent_post_ids or None,
             )
+            increment_scrape_result(team_id, success=True)
         except XCircuitBreakerError:
+            increment_scrape_result(team_id, success=False)
             # Circuit breaker tripped - propagate to stop the entire scrape
             raise
         except Exception as exc:
+            increment_scrape_result(team_id, success=False)
             logger.exception(
                 "team_collector_scrape_failed",
                 team_id=team_id,

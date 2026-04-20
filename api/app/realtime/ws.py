@@ -18,7 +18,7 @@ from app.config import settings
 
 from .auth import verify_ws_api_key
 from .manager import WSConnection, realtime_manager
-from .models import is_valid_channel
+from .models import RealtimeEvent, is_valid_channel
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
 
             if msg_type == "subscribe":
+                last_seq: int | None = msg.get("lastSeq")
+                last_epoch: str | None = msg.get("lastEpoch")
+
                 subscribed = []
                 rejected = []
                 for ch in channels:
@@ -99,6 +102,26 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         subscribed.append(ch)
                     else:
                         rejected.append(ch)
+
+                # Epoch mismatch: server restarted, client must full-refetch.
+                if last_epoch is not None and last_epoch != realtime_manager.boot_epoch:
+                    await websocket.send_json({
+                        "type": "epoch_changed",
+                        "epoch": realtime_manager.boot_epoch,
+                    })
+                # Same epoch + lastSeq: replay missed events.
+                elif last_seq is not None and last_epoch == realtime_manager.boot_epoch:
+                    for ch in subscribed:
+                        missed = await realtime_manager.fetch_backlog(ch, last_seq)
+                        for entry in missed:
+                            event = RealtimeEvent(
+                                type=entry["type"],
+                                channel=entry["channel"],
+                                seq=entry["seq"],
+                                payload=entry["payload"],
+                                boot_epoch=realtime_manager.boot_epoch,
+                            )
+                            await websocket.send_json(event.to_dict())
 
                 resp: dict = {"type": "subscribed", "channels": subscribed}
                 if rejected:

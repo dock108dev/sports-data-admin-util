@@ -20,7 +20,7 @@ services:
       - ./backups:/backups
       - ./scripts:/scripts
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks:
       - internal
     healthcheck:
@@ -79,6 +79,8 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       MAIL_FROM: ${MAIL_FROM:-noreply@scrolldownsports.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # OpenTelemetry — leave unset to disable tracing (no collector required)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,6 +122,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-}
       OPENAI_MODEL_SUMMARY: ${OPENAI_MODEL_SUMMARY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,6 +155,7 @@ services:
       CELERY_BROKER_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
       ENVIRONMENT: ${ENVIRONMENT:-development}
       API_KEY: ${API_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,6 +188,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_SUMMARY: ${OPENAI_MODEL_SUMMARY:-gpt-4o}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -224,6 +229,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_SUMMARY: ${OPENAI_MODEL_SUMMARY:-gpt-4o}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -256,6 +262,7 @@ services:
       # X auth cookies — injected directly into each browser context
       X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
       X_CT0: ${X_CT0:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -288,6 +295,7 @@ services:
       # X auth cookies — injected directly into each browser context
       X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
       X_CT0: ${X_CT0:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -403,6 +411,92 @@ services:
           /scripts/backup.sh
         done
 
+  # OpenTelemetry Collector — receives OTLP from API and scraper workers,
+  # exports traces to Tempo and metrics to Prometheus.
+  # Only started when the "observability" profile is active:
+  #   docker compose --profile observability up
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    container_name: sports-otel-collector
+    profiles: ["observability"]
+    logging: *default-logging
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics scrape endpoint
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:13133/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Grafana — dashboard UI for pipeline coverage and observability metrics.
+  # Only started when the "observability" profile is active:
+  #   docker compose --profile observability up
+  grafana:
+    image: grafana/grafana-oss:10.4.2
+    container_name: sports-grafana
+    profiles: ["observability"]
+    logging: *default-logging
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-sports}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+      # Pass DB credentials through for datasource provisioning
+      POSTGRES_USER: ${POSTGRES_USER:-sports}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sports}
+      POSTGRES_DB: ${POSTGRES_DB:-sports}
+      # Alert notification webhook — set to a Slack incoming webhook or similar
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/alerts:/etc/grafana/provisioning/alerting:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Prometheus — scrapes OTel collector metrics endpoint.
+  # Only started when the "observability" profile is active:
+  #   docker compose --profile observability up
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: sports-prometheus
+    profiles: ["observability"]
+    logging: *default-logging
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   log-relay:
     build:
       context: ./log-relay
@@ -425,6 +519,8 @@ volumes:
   postgres-data:
   scraper-cache:
   model-artifacts:
+  grafana-data:
+  prometheus-data:
 
 networks:
   internal:

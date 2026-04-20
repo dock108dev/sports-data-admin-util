@@ -1,0 +1,153 @@
+.panel {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: #ffffff;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.panelTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 0.5rem;
+}
+
+.dateBadge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  color: var(--text-secondary);
+}
+
+.headerActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.refreshBtn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm, 4px);
+  background: #f8fafc;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.refreshBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.summaryRow {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.statBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.statValue {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 0.2rem;
+}
+
+.statValueWarn {
+  composes: statValue;
+  color: #b45309;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.table th {
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.table th:not(:first-child) {
+  text-align: right;
+}
+
+.table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: var(--text-primary);
+}
+
+.table td:not(:first-child) {
+  text-align: right;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.sportCell {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.missingBadge {
+  display: inline-block;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 9999px;
+}
+
+.fallbackBadge {
+  composes: missingBadge;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.emptyMsg {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+}
+
+.errorMsg {
+  font-size: 0.8rem;
+  color: #991b1b;
+  padding: 0.25rem 0;
+}

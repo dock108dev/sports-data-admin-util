@@ -446,7 +446,7 @@ class TestMLBMatchup:
     """Verify MLB matchup probability calculations directly."""
 
     def test_normalize_probabilities_passthrough(self) -> None:
-        from app.analytics.sports.mlb.matchup import normalize_probabilities
+        from app.analytics.sports.mlb.matchup import _normalize_matchup_probs as normalize_probabilities
 
         raw = {"a": 0.3, "b": 0.2}
         result = normalize_probabilities(raw)
@@ -454,7 +454,7 @@ class TestMLBMatchup:
         assert result == raw
 
     def test_normalize_probabilities_scales_down_when_over_one(self) -> None:
-        from app.analytics.sports.mlb.matchup import normalize_probabilities
+        from app.analytics.sports.mlb.matchup import _normalize_matchup_probs as normalize_probabilities
 
         raw = {"a": 0.8, "b": 0.6}
         result = normalize_probabilities(raw)
@@ -462,7 +462,7 @@ class TestMLBMatchup:
         assert abs(sum(result.values()) - 1.0) < 0.01
 
     def test_normalize_handles_zero_total(self) -> None:
-        from app.analytics.sports.mlb.matchup import normalize_probabilities
+        from app.analytics.sports.mlb.matchup import _normalize_matchup_probs as normalize_probabilities
 
         result = normalize_probabilities({"a": 0.0, "b": 0.0})
         assert result == {"a": 0.0, "b": 0.0}

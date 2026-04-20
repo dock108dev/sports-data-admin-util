@@ -18,11 +18,13 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic.alias_generators import to_camel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as _settings
 from app.db import get_db
 from app.db.users import User
 from app.dependencies.roles import (
@@ -34,9 +36,10 @@ from app.dependencies.roles import (
     require_user,
     resolve_role,
 )
-from app.config import settings as _settings
 from app.security import pwd_context as _pwd_ctx
 from app.services.email import send_magic_link_email, send_password_reset_email
+
+_ALIAS_CFG = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +52,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 class SignupRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., min_length=8, description="Password (min 8 characters)")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (8–72 characters)")
 
 
 class LoginRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., description="Password")
+    password: str = Field(..., max_length=72, description="Password")
     remember_me: bool = Field(default=False, description="Issue a long-lived token (30 days)")
 
 
 class TokenResponse(BaseModel):
+    model_config = _ALIAS_CFG
+
     access_token: str = Field(..., description="JWT access token")
     token_type: str = Field(default="bearer")
     role: str = Field(..., description="User role")
@@ -72,16 +77,16 @@ class MeResponse(BaseModel):
 
 class UpdateEmailRequest(BaseModel):
     email: EmailStr = Field(..., description="New email address")
-    password: str = Field(..., description="Current password for verification")
+    password: str = Field(..., max_length=72, description="Current password for verification")
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(..., description="Current password")
-    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    current_password: str = Field(..., max_length=72, description="Current password")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8–72 characters)")
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str = Field(..., description="Current password for verification")
+    password: str = Field(..., max_length=72, description="Current password for verification")
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -94,7 +99,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., description="Password reset token")
-    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8–72 characters)")
 
 
 class MagicLinkRequest(BaseModel):

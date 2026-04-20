@@ -75,7 +75,7 @@ class TestValidateBlocksPostGeneration:
         """Below min blocks generates warning but passes."""
         blocks = [
             {"block_index": i, "role": "SETUP", "narrative": f"Block {i}."}
-            for i in range(2)  # Below MIN_BLOCKS (4)
+            for i in range(2)  # Below MIN_BLOCKS (3)
         ]
         result = validate_blocks_post_generation(blocks, game_id=123)
 

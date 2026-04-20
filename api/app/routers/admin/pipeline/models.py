@@ -8,7 +8,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 # =============================================================================
 # ENUMS FOR FRONTEND
@@ -105,6 +106,22 @@ class RunFullPipelineRequest(BaseModel):
         default="admin",
         description="Who triggered the run",
     )
+    regen_attempt: int = Field(
+        default=0,
+        description=(
+            "Quality-gate regen counter. 0 = first pipeline pass; "
+            "1 = first regen (triggers template_fallback on second gate failure). "
+            "Set automatically by grade_gate_regen triggers."
+        ),
+    )
+    failure_reasons: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Structured failure reasons from the previous grade_flow_task. "
+            "Injected into game_context so the next RENDER_BLOCKS pass can "
+            "address specific quality weaknesses."
+        ),
+    )
 
 
 # =============================================================================
@@ -114,6 +131,8 @@ class RunFullPipelineRequest(BaseModel):
 
 class StageStatusResponse(BaseModel):
     """Status of a single pipeline stage."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     stage: str = Field(description="Stage name (e.g., NORMALIZE_PBP)")
     stage_order: int = Field(description="Execution order (1-5)")
@@ -133,6 +152,8 @@ class StageStatusResponse(BaseModel):
 class StageOutputResponse(BaseModel):
     """Full output from a pipeline stage."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     run_id: int
     run_uuid: str
     stage: str
@@ -144,6 +165,8 @@ class StageOutputResponse(BaseModel):
 
 class StageLogsResponse(BaseModel):
     """Logs from a pipeline stage."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     run_id: int
     run_uuid: str
@@ -162,6 +185,8 @@ class StageLogsResponse(BaseModel):
 
 class PipelineRunResponse(BaseModel):
     """Full status of a pipeline run."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     run_id: int
     run_uuid: str
@@ -186,6 +211,8 @@ class PipelineRunResponse(BaseModel):
 class PipelineRunSummary(BaseModel):
     """Summary of a pipeline run for listing."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     run_id: int
     run_uuid: str
     game_id: int
@@ -207,6 +234,8 @@ class PipelineRunSummary(BaseModel):
 class StartPipelineResponse(BaseModel):
     """Response after starting a pipeline run."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     run_id: int
     run_uuid: str
     game_id: int
@@ -219,6 +248,8 @@ class StartPipelineResponse(BaseModel):
 
 class ExecuteStageResponse(BaseModel):
     """Response after executing a stage."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     run_id: int
     run_uuid: str
@@ -236,6 +267,8 @@ class ExecuteStageResponse(BaseModel):
 class ContinuePipelineResponse(BaseModel):
     """Response after continuing a pipeline."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     run_id: int
     run_uuid: str
     stage_executed: str | None
@@ -251,6 +284,8 @@ class ContinuePipelineResponse(BaseModel):
 class RerunPipelineResponse(BaseModel):
     """Response after re-running a pipeline."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     new_run_id: int
     new_run_uuid: str
     game_id: int
@@ -263,6 +298,8 @@ class RerunPipelineResponse(BaseModel):
 
 class RunFullPipelineResponse(BaseModel):
     """Response after running the full pipeline."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     run_id: int
     run_uuid: str
@@ -283,6 +320,8 @@ class RunFullPipelineResponse(BaseModel):
 class GamePipelineRunsResponse(BaseModel):
     """List of pipeline runs for a game."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     game_id: int
     game_info: dict[str, Any] = Field(description="Basic game info")
     runs: list[PipelineRunSummary]
@@ -295,6 +334,8 @@ class GamePipelineRunsResponse(BaseModel):
 
 class GamePipelineSummary(BaseModel):
     """Quick summary of pipeline state for a game."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     game_id: int
     game_date: str
@@ -311,6 +352,8 @@ class GamePipelineSummary(BaseModel):
 
 class StageComparisonResponse(BaseModel):
     """Compare a stage's output between two runs."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     game_id: int
     stage: str
@@ -355,6 +398,8 @@ class BulkGenerateRequest(BaseModel):
 class BulkGenerateAsyncResponse(BaseModel):
     """Response after starting an async bulk generation job."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     job_id: str = Field(description="Unique job identifier for tracking progress")
     message: str = Field(description="Status message")
     status_url: str = Field(description="URL to poll for job status")
@@ -362,6 +407,8 @@ class BulkGenerateAsyncResponse(BaseModel):
 
 class BulkGenerateStatusResponse(BaseModel):
     """Status of a bulk generation job."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     job_id: str = Field(description="Job identifier")
     state: str = Field(description="Job state: PENDING, PROGRESS, SUCCESS, FAILURE")
@@ -383,6 +430,8 @@ class BulkGenerateStatusResponse(BaseModel):
 
 class BackfillEmbeddedTweetsResponse(BaseModel):
     """Response from backfilling embedded tweets into game flows."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     total_checked: int = Field(description="Number of flows checked")
     total_backfilled: int = Field(description="Number of flows that were backfilled")

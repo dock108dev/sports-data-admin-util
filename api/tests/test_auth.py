@@ -36,6 +36,7 @@ class TestVerifyApiKey:
         test_key = "a" * 32  # Valid 32-char key
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = test_key
+            mock_settings.consumer_api_key = None
 
             result = await verify_api_key(mock_request, test_key)
 
@@ -49,6 +50,7 @@ class TestVerifyApiKey:
 
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = configured_key
+            mock_settings.consumer_api_key = None
 
             with pytest.raises(HTTPException) as exc_info:
                 await verify_api_key(mock_request, provided_key)
@@ -177,6 +179,7 @@ class TestVerifyApiKey:
         """Invalid API key logs warning with client IP and path."""
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = "correct_key_" + "x" * 20
+            mock_settings.consumer_api_key = None
 
             with patch("app.dependencies.auth.logger") as mock_logger:
                 with pytest.raises(HTTPException):
@@ -222,6 +225,7 @@ class TestConstantTimeComparison:
 
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = test_key
+            mock_settings.consumer_api_key = None
 
             with patch("app.dependencies.auth.secrets.compare_digest") as mock_compare:
                 mock_compare.return_value = True
@@ -402,3 +406,98 @@ class TestApiKeyHeaderName:
         from app.dependencies.auth import API_KEY_HEADER
 
         assert API_KEY_HEADER.auto_error is False
+
+
+class TestConsumerKeyOnAdminRoute:
+    """Tests for consumer key scope rejection — ISSUE-010."""
+
+    @pytest.fixture
+    def mock_request(self) -> MagicMock:
+        request = MagicMock()
+        request.client.host = "127.0.0.1"
+        request.url.path = "/api/admin/sports/games"
+        return request
+
+    def test_consumer_key_rejected_on_admin_route(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Consumer key raises 403 on admin route when distinct keys are configured."""
+        import asyncio
+        admin_key = "admin_secret_key_" + "a" * 24
+        consumer_key = "consumer_secret_key_" + "b" * 21
+
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = admin_key
+            mock_settings.consumer_api_key = consumer_key
+
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(verify_api_key(mock_request, consumer_key))
+
+        assert exc_info.value.status_code == 403
+        assert "Consumer API key is not authorized for admin routes" in exc_info.value.detail
+
+    def test_admin_key_accepted_on_admin_route(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Admin key is accepted on admin route regardless of consumer key config."""
+        import asyncio
+        admin_key = "admin_secret_key_" + "a" * 24
+        consumer_key = "consumer_secret_key_" + "b" * 21
+
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = admin_key
+            mock_settings.consumer_api_key = consumer_key
+
+            result = asyncio.run(verify_api_key(mock_request, admin_key))
+
+        assert result == admin_key
+
+    def test_consumer_key_accepted_when_no_separate_consumer_key(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Single-key setup: one key works everywhere (consumer_api_key not set)."""
+        import asyncio
+        shared_key = "shared_secret_key_" + "x" * 23
+
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = shared_key
+            mock_settings.consumer_api_key = None
+
+            result = asyncio.run(verify_api_key(mock_request, shared_key))
+
+        assert result == shared_key
+
+    def test_admin_key_sets_api_key_verified(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Admin key on admin route sets api_key_verified on request.state."""
+        import asyncio
+        admin_key = "admin_key_" + "z" * 31
+
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = admin_key
+            mock_settings.consumer_api_key = None
+
+            asyncio.run(verify_api_key(mock_request, admin_key))
+
+        assert mock_request.state.api_key_verified is True
+
+    def test_consumer_key_rejection_logs_warning(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Consumer key on admin route logs a warning with context."""
+        import asyncio
+        admin_key = "admin_secret_key_" + "a" * 24
+        consumer_key = "consumer_secret_key_" + "b" * 21
+
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = admin_key
+            mock_settings.consumer_api_key = consumer_key
+
+            with patch("app.dependencies.auth.logger") as mock_logger:
+                with pytest.raises(HTTPException):
+                    asyncio.run(verify_api_key(mock_request, consumer_key))
+
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            assert call_args[0][0] == "Consumer API key used on admin route"

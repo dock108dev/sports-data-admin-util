@@ -4,6 +4,66 @@ After digging through the full backend, scraper, and the completed Phase 1 front
 
 ---
 
+## Scroll-down-web handoff: Playwright, BFF, and what SDA must hold
+
+This section is a **brainsump refresh** distilled from two consumer-side audits: **`SDA_HANDOFF.md`** (Playwright coverage map, CI policy, route inventory) and **`MINIMAL_SDA_FIXTURES.md`** (minimal JSON shapes and invariants). It is written for **this repo** (sports-data-admin / sports data API) as the upstream that scroll-down-web’s Next.js BFF calls with `SPORTS_DATA_API_KEY` (or equivalent).
+
+### CI policy on the consumer (`@live-upstream`)
+
+| Layer | Command / workflow | Intent |
+|--------|----------------------|--------|
+| **PR** | Playwright with `--grep "@smoke"` and `--grep-invert "@live-upstream"` | UI + BFF smoke **without** requiring live schedules, FairBet slates, or golf leaderboards from SDA. |
+| **Daily** | Full Playwright | Includes `@live-upstream` tests that hit **real (or production-like)** upstream data through the web BFF. |
+
+**Tag rule (consumer repo):** mark `@live-upstream` on any spec that needs non-empty games/odds/golf/history from SDA or that would skip/fail on an empty slate. **Do not** tag pure mocks, fixture-only `/api/ai/*` tests, or checks that only assert a non-5xx response.
+
+**Implication for SDA:** PRs here are not blocked by consumer daily E2E, but **prod regressions** still surface in consumer daily runs. When daily fails, triage maps **failing test title → BFF route → upstream path** (see below).
+
+### BFF routes the browser tests care about (consumer → upstream mental model)
+
+The consumer app implements **`/api/*`** under its own `web/src/app/api/`. Those handlers forward to **this** API (e.g. admin sports routes). Playwright **explicitly** references strings like `/api/games`, `/api/fairbet`, `/api/golf/*`, `/api/history`; **implicitly**, loading `/`, `/game/[id]`, `/fairbet`, `/golf`, `/history` pulls the same BFF surface.
+
+| Consumer BFF (examples) | Typical SDA responsibility |
+|-------------------------|----------------------------|
+| `GET /api/games`, `GET /api/games/*` | List + detail + flow-related data; must yield **renderable** game rows when tests expect data. |
+| `GET /api/fairbet`, `/api/fairbet/odds`, `/api/fairbet/live` | Odds/EV cards, live FairBet; **numeric consistency** (EV, implied prob, cross-book) is an SDA concern. |
+| `GET /api/golf/leaderboard`, `/api/golf/tournaments` | Tournament and leaderboard payloads for golf specs. |
+| `GET /api/history` | History tier: pro vs free (`403` + `pro_required` where tests expect gating). |
+
+Exact BFF implementation lives in **scroll-down-web** (`web/src/app/api/**/route.ts`). Upstream paths are often under **`/api/admin/sports/...`** (and consumer flow may use **`/api/v1/...`** where that split exists). This repo should treat **admin + v1** contracts as the source of truth for payloads the BFF proxies or reshapes.
+
+### Minimal invariants (from `MINIMAL_SDA_FIXTURES.md`)
+
+Use these when reproducing consumer Playwright failures or when stubbing the BFF locally.
+
+**1. Games list (`GET` equivalent upstream: games list used by home)**  
+- **Invariant:** `200` JSON with `games: GameSummary[]`; at least one row must be **renderable** on `/` (`[data-testid='game-row']` in consumer tests).  
+- **High-signal fields:** `id`, `leagueCode`, `gameDate`, `status`, `homeTeam`, `awayTeam`; optional `homeScore`, `awayScore`, `hasFlow`, `hasOdds`, `isLive`, plus any **ingestion / freshness** fields the BFF exposes (consumer derives staleness UI from those).  
+- **Empty slate:** many tests skip with “No game data available.” For **stable** daily E2E, SDA (or a fixture environment) should expose **at least one game per league** the UI shows (e.g. MLB, NBA, NCAAB, NHL) for a **stable date window**.
+
+**2. FairBet (`/fairbet` → fairbet BFF routes)**  
+- **Invariant:** Within timeout, either at least one `[data-testid='bet-card']` **or** `[data-testid='fairbet-empty-state']` (empty is valid).  
+- **When cards exist:** smoke tests expect EV / tier / book row / attribution / line-movement **regions** to exist; **SDA owns numeric correctness**; consumer asserts presence and coarse behavior (blur, pro gate, etc.).
+
+**3. History (`GET /api/history?…` on consumer)**  
+- **Invariant:** For pro tier (cookie or `?tier=pro`), response must allow `/history` to render `[data-testid='page-history']` when authorized; free tier returns **`403`** with `pro_required` where gated tests expect it.  
+- Date ranges in tests may be **fixed**; SDA should either return **stable** payloads for those params or document supported windows.
+
+**4. Phase 9 book-details blur (consumer stub)**  
+- Consumer **`fairbet/phase9.spec.ts`** may stub `**/api/fairbet/odds**` with a minimal `BetsResponse`-shaped JSON so blur/layout tests run without a full odds feed. **SDA must still satisfy section 2 in production**; the stub only documents **minimum card shape** for those assertions.
+
+### What to give the consumer team from SDA
+
+1. **Stable regression windows:** known dates + leagues with guaranteed non-empty games list (and optional FairBet/history) for `@live-upstream` daily runs.  
+2. **Failing test titles** from daily Playwright → map to BFF route → **exact upstream endpoint + query** this repo serves.  
+3. **Non-goals for SDA:** layout, focus order, Pro copy, PWA, Stripe, magic-link UX — **web-only**.
+
+### Spec areas that typically carry `@live-upstream` (consumer repo)
+
+FairBet (multiple specs), home/game list and cache/perf, game detail/timeline/stats, golf leaderboard/tournaments, history page, ads/mobile/freemium/realtime suites — see consumer `rg '@live-upstream' web/tests` for the live list.
+
+---
+
 ## What the backend actually is right now
 
 This is a real platform. Not a prototype pretending to be one. FastAPI + SQLAlchemy 2.0 async + Celery + Redis + Postgres. Two separate process trees: an API server and a scraper worker. The API handles routes, realtime (WS/SSE), and analytics tasks. The scraper handles ingestion, odds, social, and flow generation.
@@ -23,8 +83,9 @@ What is transitional:
 
 What is legacy:
 - The timeline artifact system. There are two parallel output paths: `SportsGameFlow` (moments + blocks) and `SportsGameTimelineArtifact` (timeline JSON). The flow path is the real one now. The timeline artifact feels like a v1 that hasn't been cleaned up. The frontend doesn't use it for the primary game flow view.
-- GameStatus enum has a duplicated `cancelled` entry (UK spelling alias pointing to same value). Not harmful but sloppy.
 - The `external_ids` and `external_codes` JSONB fields on games and teams have no schema enforcement. They're catch-all bags with no documentation. This is fine until someone depends on a key that only sometimes exists.
+
+> **Resolved in `aidlc_1`:** `GameStatus` duplicate `canceled` entry standardized to `CANCELLED`. `PipelineStage` enum now has a single SSOT in `api/app/services/pipeline/models.py`. Score tuple convention replaced with `ScoreObject {home, away}` on consumer endpoint. Moments removed from the consumer API (`/api/v1/`); blocks are the only consumer output.
 
 ---
 
@@ -45,19 +106,35 @@ What is legacy:
 - **Social post phase categorization.** The frontend's `GameFlowView` expects `SocialPostsByPhase` (pregame, inGame by segment, postgame). The backend stores `game_phase` on `TeamSocialPost` but it's nullable and the mapping logic (`tweet_mapper.py`) may not reliably categorize all posts. The `ExpandableSocialSections` component groups by phase — if `game_phase` is null, those posts fall into limbo. The backend needs to guarantee phase assignment for all mapped posts.
 - **Embedded social post IDs.** Blocks can reference `embedded_social_post_id` but the pipeline stage that assigns these (`embedded_tweets.py`) needs to actually resolve valid post IDs that the frontend can use. If the ID doesn't correspond to a real `TeamSocialPost`, the frontend renders "Social post #undefined" which is a trust problem.
 - **Data staleness.** The backend computes `dataStalenessState` at API response time via `data_freshness.py` with configurable thresholds (live: 60s stale / 300s very_stale, pregame: 600s / 1800s). But this field is nullable in the response schema. The frontend uses 7-day and 1-day thresholds for its own staleness indicators. These are two different staleness models talking past each other. SSOT needed.
-- **Score display convention.** Internal DB format is `[home, away]`. API swaps to `[away, home]` via `_swap_score()`. Frontend renders as "Away-Home". This works but is fragile — one missed swap in a new endpoint and scores are backwards. This convention should be documented as a hard contract, not a per-endpoint implementation detail.
+- **Score display convention.** Consumer endpoint uses `ScoreObject {home, away}` — explicit keys, no implicit ordering. `_swap_score()` is deleted. Admin endpoints still return `[int, int]` tuples; migrate on touch.
+
+  > **Resolved in `aidlc_1`:** `_swap_score()` deleted; `ScoreObject {home, away}` is the consumer wire contract. Per-endpoint score swaps are gone.
 
 ### Where the frontend is ahead of the backend
 
-- **Guardrails enforcement.** The frontend has `guardrails.ts` with hard invariants (max blocks, max tweets, word count limits, social independence validation). The backend has its own `validate_blocks.py` with overlapping but not identical constraints (backend allows 3-7 blocks, frontend enforces 4-7). The frontend MIN_BLOCKS = 4 but the backend MIN_BLOCKS = 3 (for blowout games). This mismatch means the frontend will flag warnings on valid backend output. These need to be aligned.
-- **Consumer-facing game flow components.** `CollapsedGameFlow.tsx`, `GameFlowView.tsx`, `ExpandableSocialSections.tsx` are fully built and production-ready. The backend pipeline generates blocks but the consumer-facing endpoint (`/games/{game_id}/flow`) doesn't exist under a consumer API path — it lives under the admin sports router. There's no clear consumer vs admin API boundary in routing.
+- **Guardrails enforcement.** The frontend has `guardrails.ts` with hard invariants (max blocks, max tweets, word count limits, social independence validation). The backend has its own `validate_blocks.py` with overlapping but not identical constraints.
+
+  > **Resolved in `aidlc_1`:** `MIN_BLOCKS` is now 3 in both `block_types.py` (backend) and `guardrails.ts` (frontend). Constants are in sync.
+
+- **Consumer-facing game flow components.** `CollapsedGameFlow.tsx`, `GameFlowView.tsx`, `ExpandableSocialSections.tsx` are fully built and production-ready.
+
+  > **Resolved in `aidlc_1`:** `/api/v1/` router namespace is live. Consumer game flow endpoint is at `/api/v1/games/{game_id}/flow`. Admin endpoints remain under `/api/admin/sports/`. Full consumer/admin split is Phase 2.
+
 - **Baseball stat display.** The frontend `MiniBoxDisplay` checks for hockey-specific stats (`player.goals !== undefined`) to switch display format, but doesn't have explicit baseball handling. Baseball block stats (runs, hits, RBIs, HR) exist in the `BlockPlayerStat` type but the rendering code in `CollapsedGameFlow.tsx` only branches on basketball vs hockey. Baseball games will fall through to the basketball formatting path, showing "pts" for baseball players. This is a frontend bug, but it's caused by the backend not signaling sport type clearly enough at the block level.
 
 ### Where the backend is leaking old assumptions
 
-- **The `moments` layer is vestigial for consumers.** The API returns both `moments` (inside `flow.moments`) and `blocks`. The frontend's primary view uses blocks exclusively. Moments exist as a fallback when blocks are absent, but in the consumer experience they serve no purpose if blocks exist. The backend should stop treating moments as a consumer-facing data structure and make them an internal pipeline artifact only.
-- **`story_version = "v2-moments"` naming.** The DB filter for current flows is `v2-moments` but the actual consumer output is blocks, not moments. This naming is confusing. When `blocks_version = "v1-blocks"` was added, the top-level story_version wasn't updated. Minor, but contributes to the "is this moments or blocks?" confusion.
-- **Scores are tuples, not objects.** `scoreBefore` and `scoreAfter` are `[int, int]` arrays. The frontend has to know that index 0 is away and index 1 is home (after the API swap). This is a brittle contract. A `{home: int, away: int}` object would be self-documenting and immune to swap bugs.
+- **The `moments` layer is vestigial for consumers.** The API returns both `moments` (inside `flow.moments`) and `blocks`. The frontend's primary view uses blocks exclusively. Moments exist as a fallback when blocks are absent, but in the consumer experience they serve no purpose if blocks exist.
+
+  > **Resolved in `aidlc_1`:** The `/api/v1/` consumer endpoint exposes blocks only. Moments are not included in the consumer response. They remain as an internal pipeline artifact for traceability.
+
+- **`story_version = "v2-moments"` naming.** The DB filter for current flows was `v2-moments` but the actual consumer output is blocks, not moments. This naming was confusing.
+
+  > **Resolved in `aidlc_1`:** New pipeline runs write `story_version = "v2-blocks"`. Legacy rows carrying `"v2-moments"` are accepted on read during the transition window and upgraded on re-run. See `docs/gameflow/version-semantics.md`.
+
+- **Scores are tuples, not objects.** `scoreBefore` and `scoreAfter` are `[int, int]` arrays on admin endpoints. The frontend has to know that index 0 is away and index 1 is home (after the API swap). This is a brittle contract.
+
+  > **Partially resolved in `aidlc_1`:** The consumer endpoint (`/api/v1/`) returns `ScoreObject {home, away}`. Admin endpoints still use tuples; full migration is Phase 2.
 
 ---
 
@@ -204,11 +281,15 @@ Timestamp fields (`lastScrapedAt`, `lastIngestedAt`, etc.) are all nullable. For
 
 ### Admin/app boundary confusion
 
-All game endpoints live under `/api/admin/sports/`. The consumer-facing game flow endpoint (`/games/{game_id}/flow`) is in the same router as admin pipeline controls. There is no `/api/v1/` or `/api/consumer/` namespace. When this becomes a consumer-facing product, the admin endpoints and consumer endpoints need clear separation — different auth requirements, different rate limits, different response shapes.
+> **Partially resolved in `aidlc_1`:** `/api/v1/` is live for the consumer game flow endpoint. Remaining game data endpoints still live under `/api/admin/sports/`; full consumer/admin split is Phase 2.
+
+The consumer-facing game flow endpoint is at `/api/v1/games/{id}/flow`. Admin pipeline controls remain under `/api/admin/sports/`. Full separation (different auth, different rate limits, different response shapes) is Phase 2 work.
 
 ### Score tuple convention
 
-Scores are `[int, int]` arrays with implicit ordering (API: away first, DB: home first). This swap happens in `_swap_score()` and is applied per-endpoint. Every new endpoint that returns scores must remember to swap. This is a class of bug waiting to happen repeatedly. Switch to `{home: int, away: int}` objects or at minimum document this as a hard contract with a shared helper that all score-returning endpoints must use.
+> **Resolved in `aidlc_1`:** `_swap_score()` deleted. Consumer endpoint uses `ScoreObject {home, away}`. Admin endpoints still return `[int, int]` tuples — migrate on touch per CLAUDE.md.
+
+~~Scores are `[int, int]` arrays with implicit ordering. This swap happens in `_swap_score()` and is applied per-endpoint.~~ The per-endpoint swap pattern is gone. `ScoreObject` is self-documenting.
 
 ### Overloaded JSONB fields
 
@@ -266,17 +347,17 @@ What this means concretely:
 - **Build a golden game corpus.** 10 games per sport, human-validated narrative outputs. Run every pipeline change against this corpus. This is the single most impactful testing investment.
 - **Add coverage validation.** Every generated flow must mention: the final score, the winning team, and any overtime. Key play coverage should be tracked even if not enforced.
 - **Add LLM-based output grading.** Use a separate model call to score narratives on coherence and information density. Expensive, but this is the product.
-- **Align backend and frontend block count constraints.** Backend MIN_BLOCKS = 3 (blowouts), frontend MIN_BLOCKS = 4. Either change the frontend to accept 3-block blowout flows or change the backend to always produce 4+.
+- ~~**Align backend and frontend block count constraints.**~~ Both now use MIN_BLOCKS = 3; verified in sync (see `docs/audits/ssot-cleanup.md`).
 - **Guarantee mini_box population.** Verify that the pipeline actually populates `mini_box` with cumulative stats and deltas for all sports. Add a validation check in `validate_blocks.py`.
 
 ### Priority 2: Contract hardening
 
-- **Move scores from tuples to objects.** `{home: int, away: int}` everywhere. Kill the swap convention.
+- ~~**Move scores from tuples to objects.**~~ `ScoreObject {home, away}` is now the wire contract on the consumer endpoint. Remaining admin endpoints still return tuples; migrate on touch.
 - **Make state predicates non-nullable.** `isLive`, `isFinal`, `isPregame` should be computed booleans, never null.
 - **Fix camelCase aliasing gaps.** Audit all response schemas for missing Field aliases.
-- **Single PipelineStage enum.** One definition, imported by both DB and service layers.
-- **Define consumer vs admin API boundaries.** Namespace them. Different routers, different auth, different rate limits.
-- **Document score convention.** If tuples stay (they shouldn't), make the convention explicit in a shared module, not per-endpoint.
+- ~~**Single PipelineStage enum.**~~ Done: `api/app/services/pipeline/models.py` is the SSOT; DB layer re-exports.
+- **Define consumer vs admin API boundaries.** Consumer game flow is live at `/api/v1/`; remaining endpoints need migration. Different routers, different auth, different rate limits.
+- ~~**Document score convention.**~~ `ScoreObject` is self-documenting. The `_swap_score` per-endpoint pattern is gone.
 
 ### Priority 3: Social stabilization
 

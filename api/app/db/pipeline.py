@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -25,33 +27,6 @@ from sqlalchemy.sql import text
 
 from .base import Base
 from .sports import SportsGame
-
-
-class PipelineStage(str, Enum):
-    """Pipeline stages for game processing."""
-
-    NORMALIZE_PBP = "NORMALIZE_PBP"
-    GENERATE_MOMENTS = "GENERATE_MOMENTS"
-    VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
-    ANALYZE_DRAMA = "ANALYZE_DRAMA"
-    GROUP_BLOCKS = "GROUP_BLOCKS"
-    RENDER_BLOCKS = "RENDER_BLOCKS"
-    VALIDATE_BLOCKS = "VALIDATE_BLOCKS"
-    FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
-
-    @classmethod
-    def ordered_stages(cls) -> list[PipelineStage]:
-        """Return stages in execution order."""
-        return [
-            cls.NORMALIZE_PBP,
-            cls.GENERATE_MOMENTS,
-            cls.VALIDATE_MOMENTS,
-            cls.ANALYZE_DRAMA,
-            cls.GROUP_BLOCKS,
-            cls.RENDER_BLOCKS,
-            cls.VALIDATE_BLOCKS,
-            cls.FINALIZE_MOMENTS,
-        ]
 
 
 class PipelineRunStatus(str, Enum):
@@ -256,3 +231,60 @@ class BulkFlowGenerationJob(Base):
     )
 
     __table_args__ = (Index("idx_bulk_story_jobs_uuid", "job_uuid", unique=True),)
+
+
+class PipelineCoverageReport(Base):
+    """Daily pipeline coverage summary: FINAL games vs flows generated, by sport."""
+
+    __tablename__ = "pipeline_coverage_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unique per calendar day; re-running the task for the same date overwrites this row.
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Per-sport rows: [{sport, finals_count, flows_count, missing_count, fallback_count, avg_quality_score}]
+    sport_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    # Aggregate totals (denormalised for fast reads)
+    total_finals: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_flows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_missing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_fallbacks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class PipelineCoverageReportEntry(Base):
+    """Per-game pipeline coverage entry written by the daily coverage report task."""
+
+    __tablename__ = "pipeline_coverage_report"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    sport: Mapped[str] = mapped_column(Text, nullable=False)
+    game_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    has_flow: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Human-readable reason when has_flow is False (e.g. "no_pipeline_run", "pipeline_failed")
+    gap_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("report_date", "game_id", name="uq_coverage_report_date_game"),
+    )
+
+
+# Re-export so callers can do `from app.db.pipeline import PipelineStage`.
+# Placed at the bottom to avoid circular import: pipeline.py -> services.pipeline ->
+# executor -> pipeline.py (classes not yet defined if imported at top of file).
+from ..services.pipeline.models import PipelineStage  # noqa: F401 — single source of truth

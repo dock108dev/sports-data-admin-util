@@ -7,6 +7,7 @@ import directly from the schemas package.
 from .common import (
     GamePhase,
     LiveSnapshot,
+    MediaType,
     MLBBatterStat,
     MLBPitcherStat,
     NHLDataHealth,
@@ -23,6 +24,8 @@ from .common import (
 from .diagnostics import GameConflictEntry, JobRunResponse, MissingPbpEntry
 from .game_flow import (
     BlockMiniBox,
+    ConsumerGameFlowResponse,
+    FlowStatusResponse,
     GameFlowBlock,
     GameFlowContent,
     GameFlowMoment,
@@ -32,6 +35,7 @@ from .game_flow import (
     MomentGoalieStat,
     MomentPlayerStat,
     MomentTeamBoxScore,
+    ScoreObject,
     TimelineArtifactResponse,
 )
 from .games import (
@@ -66,6 +70,7 @@ from .teams import (
 __all__ = [
     # common
     "GamePhase",
+    "MediaType",
     "LiveSnapshot",
     "MLBBatterStat",
     "MLBPitcherStat",
@@ -85,6 +90,8 @@ __all__ = [
     "MissingPbpEntry",
     # game_flow
     "BlockMiniBox",
+    "ConsumerGameFlowResponse",
+    "FlowStatusResponse",
     "GameFlowBlock",
     "GameFlowContent",
     "GameFlowMoment",
@@ -94,6 +101,7 @@ __all__ = [
     "MomentGoalieStat",
     "MomentPlayerStat",
     "MomentTeamBoxScore",
+    "ScoreObject",
     "TimelineArtifactResponse",
     # games
     "GameDetailResponse",

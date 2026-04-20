@@ -5,9 +5,11 @@ Handles odds matching to games and persistence, including NCAAB-specific name ma
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from enum import Enum
 
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,17 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
 from ..utils.datetime_utils import now_utc, to_et_date
+
+
+def _notify_odds_update(session: Session, game_id: int) -> None:
+    """Emit pg_notify('odds_update', ...) within the current transaction. Best-effort."""
+    try:
+        payload = json.dumps({"game_id": game_id, "event_type": "odds_update"})
+        session.execute(
+            text("SELECT pg_notify('odds_update', :p)"), {"p": payload}
+        )
+    except Exception:
+        pass
 
 
 class OddsUpsertResult(Enum):
@@ -139,6 +152,12 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
     if game and game.status == db_models.GameStatus.live.value:
         return OddsUpsertResult.SKIPPED_LIVE
 
+    # Backfill typed column from JSONB if not yet set
+    if game is not None and not game.odds_api_event_id:
+        odds_id = external_ids.get("odds_api_event_id")
+        if odds_id:
+            game.odds_api_event_id = str(odds_id)
+
     # Write odds records
     side_value = snapshot.side if snapshot.side else None
     _execute_odds_upsert(session, game_id, snapshot, side_value)
@@ -147,5 +166,6 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
     if game is not None:
         upsert_fairbet_odds(session, game_id, game.status, snapshot)
         game.last_odds_at = now_utc()
+        _notify_odds_update(session, game_id)
 
     return OddsUpsertResult.PERSISTED

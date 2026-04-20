@@ -1,7 +1,11 @@
-"""In-memory channel registry, sequence tracking, and fan-out.
+"""Channel registry, sequence tracking, and local fan-out.
 
-Single-instance design. Upgradeable to Redis pub/sub later by replacing
-the publish() method with a Redis PUBLISH + subscriber relay.
+Publishing flow (with Redis Streams bridge wired in):
+  publish() → RedisStreamsBridge.publish() (XADD + HINCRBY)
+  → consumer loop reads entry → _dispatch_local() → WS/SSE connections
+
+Without bridge (unit tests / no Redis):
+  publish() → _dispatch_local() directly (in-memory seq counter fallback).
 """
 
 from __future__ import annotations
@@ -10,20 +14,20 @@ import asyncio
 import json
 import logging
 import os
-import time
+import uuid
 from collections.abc import Callable, Coroutine
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from .models import MAX_CHANNELS_PER_CONNECTION, RealtimeEvent, is_valid_channel
+
+if TYPE_CHECKING:
+    from .streams import RedisStreamsBridge
 
 logger = logging.getLogger(__name__)
 
 REALTIME_DEBUG = os.getenv("REALTIME_DEBUG", "").lower() in ("1", "true", "yes")
 
-# Per-SSE-connection queue depth before disconnect
 SSE_QUEUE_MAX = 200
-
-# WS send timeout — drop connection if send takes longer
 WS_SEND_TIMEOUT_S = 2.0
 
 
@@ -73,33 +77,40 @@ class SSEConnection:
             raise OverflowError("SSE queue full")
 
 
-# Type for the on_first_subscriber callback
 OnFirstSubscriberCallback = Callable[[str], Coroutine[Any, Any, None]]
 
 
 class RealtimeManager:
-    """In-memory pub/sub manager.
+    """Channel registry and local fan-out for one API process.
 
-    Thread-safe via asyncio (single event loop).
+    When a ``RedisStreamsBridge`` is wired in via ``set_streams_bridge()``,
+    ``publish()`` writes to the Redis Stream and the bridge's consumer loop
+    calls ``_dispatch_local()`` to reach local connections.  Without a bridge
+    the call goes directly to ``_dispatch_local()`` (used in unit tests).
     """
 
     def __init__(self) -> None:
         self._subscribers: dict[str, set[Connection]] = {}
+        # Fallback seq counter — used only when no bridge is wired (tests).
         self._seq: dict[str, int] = {}
         self._conn_channels: dict[str, set[str]] = {}  # conn.id -> channels
-        self._boot_epoch: int = int(time.time())
+        self._boot_epoch: str = str(uuid.uuid4())
         self._on_first_subscriber: OnFirstSubscriberCallback | None = None
+        self._bridge: RedisStreamsBridge | None = None
 
-        # Metrics
         self._publish_count: int = 0
         self._error_count: int = 0
 
     @property
-    def boot_epoch(self) -> int:
+    def boot_epoch(self) -> str:
         return self._boot_epoch
 
+    def set_streams_bridge(self, bridge: RedisStreamsBridge) -> None:
+        """Wire in the Redis Streams bridge for multi-process fanout."""
+        self._bridge = bridge
+
     def set_on_first_subscriber(self, callback: OnFirstSubscriberCallback) -> None:
-        """Register callback invoked when a channel goes from 0 -> 1 subscribers."""
+        """Register callback invoked when a channel goes from 0 → 1 subscribers."""
         self._on_first_subscriber = callback
 
     # ------------------------------------------------------------------
@@ -112,7 +123,6 @@ class RealtimeManager:
             logger.warning("realtime_invalid_channel", extra={"channel": channel})
             return False
 
-        # Enforce per-connection channel limit
         conn_channels = self._conn_channels.setdefault(conn.id, set())
         if len(conn_channels) >= MAX_CHANNELS_PER_CONNECTION and channel not in conn_channels:
             logger.warning(
@@ -126,11 +136,9 @@ class RealtimeManager:
         subs.add(conn)
         conn_channels.add(channel)
 
-        # Initialise seq counter for new channels
         if channel not in self._seq:
             self._seq[channel] = 0
 
-        # Fire catch-up callback when channel goes from 0 -> 1 subscribers
         if was_empty and self._on_first_subscriber is not None:
             asyncio.ensure_future(self._safe_first_subscriber_callback(channel))
 
@@ -143,7 +151,6 @@ class RealtimeManager:
         return True
 
     async def _safe_first_subscriber_callback(self, channel: str) -> None:
-        """Safely invoke the first-subscriber callback."""
         try:
             if self._on_first_subscriber:
                 await self._on_first_subscriber(channel)
@@ -151,7 +158,6 @@ class RealtimeManager:
             logger.exception("realtime_first_subscriber_error", extra={"channel": channel})
 
     def unsubscribe(self, conn: Connection, channel: str) -> None:
-        """Remove connection from a channel."""
         subs = self._subscribers.get(channel)
         if subs:
             subs.discard(conn)
@@ -163,7 +169,6 @@ class RealtimeManager:
             conn_channels.discard(channel)
 
     def disconnect(self, conn: Connection) -> None:
-        """Remove connection from all channels."""
         channels = self._conn_channels.pop(conn.id, set())
         for ch in channels:
             subs = self._subscribers.get(ch)
@@ -182,15 +187,38 @@ class RealtimeManager:
         event_type: str,
         payload: dict[str, Any],
     ) -> int:
-        """Publish an event to all subscribers of a channel.
+        """Publish an event to the channel.
+
+        With bridge: writes to Redis Stream; the consumer loop delivers to
+        local subscribers asynchronously.
+        Without bridge: dispatches in-process immediately (unit-test path).
 
         Returns the sequence number assigned to this event.
-        Non-blocking: slow/broken subscribers are dropped.
         """
-        seq = self._seq.get(channel, 0) + 1
-        self._seq[channel] = seq
         self._publish_count += 1
 
+        if self._bridge is not None:
+            return await self._bridge.publish(channel, event_type, payload)
+
+        # In-process fallback (no Redis, used in unit tests).
+        seq = self._seq.get(channel, 0) + 1
+        self._seq[channel] = seq
+        await self._dispatch_local(channel, event_type, seq, payload)
+        return seq
+
+    async def _dispatch_local(
+        self,
+        channel: str,
+        event_type: str,
+        seq: int,
+        payload: dict[str, Any],
+    ) -> None:
+        """Fan out a pre-sequenced event to all local WS/SSE connections.
+
+        Called either from the fallback publish path (no bridge) or from the
+        bridge's consumer loop after reading from Redis Streams.  The boot
+        epoch is always this process's own value so clients detect restarts.
+        """
         event = RealtimeEvent(
             type=event_type,
             channel=channel,
@@ -202,24 +230,31 @@ class RealtimeManager:
 
         subs = self._subscribers.get(channel)
         if not subs:
-            return seq
+            return
 
         dead: list[Connection] = []
-        for conn in subs:
+        for conn in list(subs):
             try:
                 await conn.send_event(data)
             except OverflowError:
-                # SSE queue full -> disconnect
-                logger.info("realtime_sse_overflow", extra={"conn": conn.id, "channel": channel})
+                logger.info(
+                    "realtime_sse_overflow",
+                    extra={"conn": conn.id, "channel": channel},
+                )
                 dead.append(conn)
             except TimeoutError:
-                # WS send timed out -> disconnect
-                logger.info("realtime_ws_timeout", extra={"conn": conn.id, "channel": channel})
+                logger.info(
+                    "realtime_ws_timeout",
+                    extra={"conn": conn.id, "channel": channel},
+                )
                 dead.append(conn)
                 self._error_count += 1
             except Exception:
-                # WS send failed -> disconnect
-                logger.debug("realtime_send_failed", extra={"conn": conn.id, "channel": channel})
+                logger.warning(
+                    "realtime_send_failed",
+                    extra={"conn": conn.id, "channel": channel},
+                    exc_info=True,
+                )
                 dead.append(conn)
                 self._error_count += 1
 
@@ -238,14 +273,11 @@ class RealtimeManager:
                 },
             )
 
-        return seq
-
     # ------------------------------------------------------------------
     # Status / metrics
     # ------------------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
-        """Return connection counts and channel info."""
         all_conns: set[str] = set()
         channel_counts: dict[str, int] = {}
         for ch, subs in self._subscribers.items():
@@ -253,7 +285,7 @@ class RealtimeManager:
             for s in subs:
                 all_conns.add(s.id)
 
-        return {
+        result: dict[str, Any] = {
             "boot_epoch": self._boot_epoch,
             "total_connections": len(all_conns),
             "total_channels": len(self._subscribers),
@@ -262,12 +294,25 @@ class RealtimeManager:
             "error_count": self._error_count,
         }
 
+        if self._bridge is not None:
+            result["streams_consumer_id"] = self._bridge.consumer_id
+            result["streams_group"] = self._bridge.group_name
+
+        return result
+
+    async def fetch_backlog(self, channel: str, since_seq: int) -> list[dict[str, Any]]:
+        """Return stream entries for channel with seq > since_seq via the bridge.
+
+        Returns empty list if no bridge is wired (unit-test / no-Redis path).
+        """
+        if self._bridge is not None:
+            return await self._bridge.fetch_backlog(channel, since_seq)
+        return []
+
     def has_subscribers(self, channel: str) -> bool:
-        """Check if a channel has any active subscribers."""
         return bool(self._subscribers.get(channel))
 
     def active_channels(self) -> set[str]:
-        """Return set of channels with at least one subscriber."""
         return {ch for ch, subs in self._subscribers.items() if subs}
 
 

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./styles.module.css";
 import {
   fetchLiveGames,
-  fetchFairbetLiveOdds,
   formatOdds,
   formatSelectionKey,
   formatMarketKey,
@@ -14,30 +13,25 @@ import {
   getBestOdds,
   trueProbToAmerican,
   formatDisabledReason,
-  type BetDefinition,
-  type FairbetLiveResponse,
   type LiveGameInfo,
 } from "@/lib/api/fairbet";
+import type { OddsSnapshot } from "@dock108/js-core";
+import { useLiveOdds } from "@/lib/hooks/useLiveOdds";
 import { FAIRBET_LEAGUES } from "@/lib/constants/sports";
 import { DerivationContent } from "../odds/DerivationContent";
 import { formatGameDate, formatLastSync, formatLineValue } from "../odds/helpers";
 
 const LEAGUES = FAIRBET_LEAGUES;
-const REFRESH_INTERVAL = 15_000;
 
 const SORT_OPTIONS = [
   { value: "ev", label: "Best EV" },
   { value: "market", label: "Market" },
 ];
 
-interface GameLiveData {
-  game: LiveGameInfo;
-  data: FairbetLiveResponse | null;
-  loading: boolean;
-  error: string | null;
-}
+// ---------------------------------------------------------------------------
+// Shared bet card
+// ---------------------------------------------------------------------------
 
-// Shared bet card (matches pregame BetCard)
 function BetCard({
   bet,
   idx,
@@ -45,52 +39,52 @@ function BetCard({
   setOpenDerivation,
   derivationRef,
 }: {
-  bet: BetDefinition;
+  bet: OddsSnapshot;
   idx: string;
   openDerivation: string | null;
   setOpenDerivation: (idx: string | null) => void;
   derivationRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const bestBook = getBestOdds(bet.books);
-  const bestBookEv = bestBook != null ? (bestBook.display_ev ?? bestBook.ev_percent) : null;
+  const bestBookEv = bestBook != null ? (bestBook.displayEv ?? bestBook.evPercent) : null;
   const bestBookHasPositiveEv = bestBook != null && bestBookEv != null && bestBookEv > 0;
 
   return (
     <div className={styles.betCard}>
       <div className={styles.betHeader}>
         <div className={styles.betHeaderLeft}>
-          {bet.market_category && bet.market_category !== "mainline" && (
+          {bet.marketCategory && bet.marketCategory !== "mainline" && (
             <span className={styles.categoryBadge}>
-              {formatMarketCategory(bet.market_category)}
+              {formatMarketCategory(bet.marketCategory)}
             </span>
           )}
         </div>
         <span className={styles.gameDate}>
-          {bet.game_date ? formatGameDate(bet.game_date) : ""}
+          {bet.gameDate ? formatGameDate(bet.gameDate) : ""}
         </span>
       </div>
 
-      {bet.player_name && (
-        <div className={styles.playerName}>{bet.player_name}</div>
+      {bet.playerName && (
+        <div className={styles.playerName}>{bet.playerName}</div>
       )}
 
       <div className={styles.betType}>
         <span className={styles.marketType}>
-          {formatMarketKey(bet.market_key)}
+          {formatMarketKey(bet.marketKey)}
         </span>
         <span className={styles.selection}>
-          {formatSelectionKey(bet.selection_key)}
-          {formatLineValue(bet.line_value, bet.market_key) && (
+          {formatSelectionKey(bet.selectionKey)}
+          {formatLineValue(bet.lineValue, bet.marketKey) && (
             <span className={styles.line}>
               {" "}
-              {formatLineValue(bet.line_value, bet.market_key)}
+              {formatLineValue(bet.lineValue, bet.marketKey)}
             </span>
           )}
         </span>
       </div>
 
       <div className={styles.booksGrid}>
-        {bet.true_prob !== null && bet.true_prob !== undefined ? (
+        {bet.trueProb !== null && bet.trueProb !== undefined ? (
           <div
             className={`${styles.bookOdds} ${styles.fairOddsCard} ${styles.fairOddsClickable}`}
             onClick={() => setOpenDerivation(openDerivation === idx ? null : idx)}
@@ -98,33 +92,33 @@ function BetCard({
           >
             <span className={styles.bookName}>Fair</span>
             <span className={styles.bookPrice}>
-              {formatOdds(trueProbToAmerican(bet.true_prob))}
+              {formatOdds(trueProbToAmerican(bet.trueProb))}
             </span>
             <span className={styles.fairProb}>
-              {(bet.true_prob * 100).toFixed(1)}%
+              {(bet.trueProb * 100).toFixed(1)}%
             </span>
-            {bet.ev_confidence_tier && (
+            {bet.evConfidenceTier && (
               <span className={`${styles.confidenceBadge} ${
-                styles[`confidence_${bet.ev_confidence_tier}` as keyof typeof styles] ?? ""
+                styles[`confidence_${bet.evConfidenceTier}` as keyof typeof styles] ?? ""
               }`}>
-                {bet.ev_confidence_tier}
+                {bet.evConfidenceTier}
               </span>
             )}
             {openDerivation === idx &&
-              ((bet.reference_price !== null &&
-                bet.opposite_reference_price !== null) ||
-                bet.ev_method === "median_consensus") && (
+              ((bet.referencePrice !== null &&
+                bet.oppositeReferencePrice !== null) ||
+                bet.evMethod === "median_consensus") && (
                 <DerivationContent
-                  referencePrice={bet.reference_price}
-                  oppositeReferencePrice={bet.opposite_reference_price}
-                  trueProb={bet.true_prob}
-                  evMethod={bet.ev_method}
-                  estimatedSharpPrice={bet.estimated_sharp_price}
-                  extrapolationRefLine={bet.extrapolation_ref_line}
-                  extrapolationDistance={bet.extrapolation_distance}
-                  perBookFairProbs={bet.per_book_fair_probs}
-                  consensusIqr={bet.consensus_iqr}
-                  consensusBookCount={bet.consensus_book_count}
+                  referencePrice={bet.referencePrice}
+                  oppositeReferencePrice={bet.oppositeReferencePrice}
+                  trueProb={bet.trueProb}
+                  evMethod={bet.evMethod}
+                  estimatedSharpPrice={bet.estimatedSharpPrice}
+                  extrapolationRefLine={bet.extrapolationRefLine}
+                  extrapolationDistance={bet.extrapolationDistance}
+                  perBookFairProbs={bet.perBookFairProbs}
+                  consensusIqr={bet.consensusIqr}
+                  consensusBookCount={bet.consensusBookCount}
                 />
               )}
           </div>
@@ -135,15 +129,15 @@ function BetCard({
               ?
               <div className={styles.fairOddsPopover}>
                 <strong>
-                  {formatDisabledReason(bet.ev_disabled_reason).title}
+                  {formatDisabledReason(bet.evDisabledReason).title}
                 </strong>
-                <p>{formatDisabledReason(bet.ev_disabled_reason).detail}</p>
+                <p>{formatDisabledReason(bet.evDisabledReason).detail}</p>
               </div>
             </span>
           </div>
         )}
         {bet.books.map((bookOdds, bookIdx) => {
-          const displayEv = bookOdds.display_ev ?? bookOdds.ev_percent;
+          const displayEv = bookOdds.displayEv ?? bookOdds.evPercent;
           const evColor = getEvColor(displayEv);
           return (
             <div
@@ -152,11 +146,11 @@ function BetCard({
                 bestBookHasPositiveEv && bookOdds.book === bestBook.book
                   ? styles.bestOdds
                   : ""
-              } ${bookOdds.is_sharp ? styles.sharpBook : ""}`}
+              } ${bookOdds.isSharp ? styles.sharpBook : ""}`}
             >
               <span className={styles.bookName}>
                 {bookOdds.book}
-                {bookOdds.is_sharp && (
+                {bookOdds.isSharp && (
                   <span className={styles.sharpBadge}>S</span>
                 )}
               </span>
@@ -184,8 +178,83 @@ function BetCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Per-game section — owns its own SSE subscription
+// ---------------------------------------------------------------------------
+
+function GameLiveSection({
+  game,
+  selectedCategory,
+  selectedSort: _selectedSort,
+  excludeAlternates,
+  openDerivation,
+  setOpenDerivation,
+  derivationRef,
+}: {
+  game: LiveGameInfo;
+  selectedCategory: string;
+  selectedSort: string;
+  excludeAlternates: boolean;
+  openDerivation: string | null;
+  setOpenDerivation: (idx: string | null) => void;
+  derivationRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const { odds, evAnalysis } = useLiveOdds(game.gameId);
+
+  let filteredBets = odds;
+  if (excludeAlternates) {
+    filteredBets = filteredBets.filter((b) => b.marketCategory !== "alternate");
+  }
+  if (selectedCategory) {
+    filteredBets = filteredBets.filter(
+      (b) => b.marketCategory === selectedCategory,
+    );
+  }
+
+  if (filteredBets.length === 0) return null;
+
+  return (
+    <div className={styles.gameSection}>
+      <div className={styles.gameHeader}>
+        <span className={styles.gameHeaderLeague}>{game.leagueCode}</span>
+        <span className={styles.gameHeaderMatchup}>
+          {game.awayTeam} @ {game.homeTeam}
+        </span>
+        <span className={styles.gameHeaderStatus}>
+          <span className={styles.gameHeaderDot} />
+          {game.status ?? "LIVE"}
+        </span>
+        {evAnalysis?.lastUpdatedAt && (
+          <span className={styles.gameHeaderUpdated}>
+            Updated {formatLastSync(evAnalysis.lastUpdatedAt)}
+          </span>
+        )}
+        <span className={styles.gameHeaderCount}>
+          {filteredBets.length} bet{filteredBets.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <div className={styles.gameBetsGrid}>
+        {filteredBets.map((bet, betIdx) => (
+          <BetCard
+            key={`${game.gameId}-${betIdx}`}
+            bet={bet}
+            idx={`${game.gameId}-${betIdx}`}
+            openDerivation={openDerivation}
+            setOpenDerivation={setOpenDerivation}
+            derivationRef={derivationRef}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export default function FairbetLivePage() {
-  const [gameLiveData, setGameLiveData] = useState<GameLiveData[]>([]);
+  const [liveGames, setLiveGames] = useState<LiveGameInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -201,7 +270,10 @@ export default function FairbetLivePage() {
   useEffect(() => {
     if (openDerivation === null) return;
     function handleClickOutside(e: MouseEvent) {
-      if (derivationRef.current && !derivationRef.current.contains(e.target as Node)) {
+      if (
+        derivationRef.current &&
+        !derivationRef.current.contains(e.target as Node)
+      ) {
         setOpenDerivation(null);
       }
     }
@@ -209,105 +281,22 @@ export default function FairbetLivePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openDerivation]);
 
-  const loadAllLiveOdds = useCallback(async () => {
+  const discoverLiveGames = useCallback(async () => {
     try {
       setError(null);
-
-      // 1) Discover which games have live odds in Redis
-      const liveGames = await fetchLiveGames(selectedLeague || undefined);
-
-      if (liveGames.length === 0) {
-        setGameLiveData([]);
-        setLoading(false);
-        return;
-      }
-
-      // 2) Fetch live odds for each game in parallel
-      const results = await Promise.allSettled(
-        liveGames.map(async (game) => {
-          const data = await fetchFairbetLiveOdds({
-            game_id: game.game_id,
-            market_category: selectedCategory || undefined,
-            sort_by: selectedSort,
-          });
-          return { game, data };
-        })
-      );
-
-      const newGameData: GameLiveData[] = results.map((result, i) => {
-        if (result.status === "fulfilled") {
-          return {
-            game: result.value.game,
-            data: result.value.data,
-            loading: false,
-            error: null,
-          };
-        } else {
-          return {
-            game: liveGames[i],
-            data: null,
-            loading: false,
-            error: result.reason?.message ?? "Failed to load",
-          };
-        }
-      });
-
-      // Filter out games with no bets
-      const withBets = newGameData.filter(
-        (gd) => gd.data && gd.data.bets.length > 0
-      );
-
-      setGameLiveData(withBets);
+      const games = await fetchLiveGames(selectedLeague || undefined);
+      setLiveGames(games);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [selectedLeague, selectedCategory, selectedSort]);
+  }, [selectedLeague]);
 
-  // Initial load
   useEffect(() => {
     setLoading(true);
-    loadAllLiveOdds();
-  }, [loadAllLiveOdds]);
-
-  // Auto-refresh every 15 seconds
-  useEffect(() => {
-    const interval = setInterval(loadAllLiveOdds, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
-  }, [loadAllLiveOdds]);
-
-  // Collect all available categories across all games
-  const allCategories = Array.from(
-    new Set(
-      gameLiveData.flatMap(
-        (gd) => gd.data?.market_categories_available ?? []
-      )
-    )
-  ).sort();
-
-  // Count total bets across all games
-  const totalBets = gameLiveData.reduce(
-    (sum, gd) => sum + (gd.data?.total ?? 0),
-    0
-  );
-
-  // Find most recent update across all games
-  const latestUpdate = gameLiveData.reduce<string | null>((latest, gd) => {
-    const ts = gd.data?.last_updated_at;
-    if (!ts) return latest;
-    if (!latest) return ts;
-    return ts > latest ? ts : latest;
-  }, null);
-
-  // Filter bets within each game by alternate exclusion
-  function getFilteredBets(data: FairbetLiveResponse): BetDefinition[] {
-    let bets = data.bets;
-    if (excludeAlternates) {
-      bets = bets.filter((b) => b.market_category !== "alternate");
-    }
-    return bets;
-  }
+    discoverLiveGames();
+  }, [discoverLiveGames]);
 
   function resetFilters() {
     setSelectedLeague("");
@@ -326,14 +315,11 @@ export default function FairbetLivePage() {
               Real-time cross-book odds with +EV fair-bet analysis
             </p>
           </div>
-          {gameLiveData.length > 0 && (
+          {liveGames.length > 0 && (
             <div className={styles.liveIndicator}>
               <span className={styles.liveDot} />
               <span>
-                {gameLiveData.length} game{gameLiveData.length !== 1 ? "s" : ""} live
-                {" · "}
-                {totalBets} bet{totalBets !== 1 ? "s" : ""}
-                {latestUpdate && ` · Updated ${formatLastSync(latestUpdate)}`}
+                {liveGames.length} game{liveGames.length !== 1 ? "s" : ""} live
               </span>
             </div>
           )}
@@ -350,7 +336,9 @@ export default function FairbetLivePage() {
           >
             <option value="">All Leagues</option>
             {LEAGUES.map((league) => (
-              <option key={league} value={league}>{league}</option>
+              <option key={league} value={league}>
+                {league}
+              </option>
             ))}
           </select>
         </div>
@@ -363,9 +351,12 @@ export default function FairbetLivePage() {
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
             <option value="">All Markets</option>
-            {allCategories.map((cat) => (
-              <option key={cat} value={cat}>{formatMarketCategory(cat)}</option>
-            ))}
+            <option value="mainline">Mainline</option>
+            <option value="player_prop">Player Prop</option>
+            <option value="team_prop">Team Prop</option>
+            <option value="alternate">Alternate</option>
+            <option value="period">Period</option>
+            <option value="game_prop">Game Prop</option>
           </select>
         </div>
 
@@ -389,7 +380,9 @@ export default function FairbetLivePage() {
             onChange={(e) => setSelectedSort(e.target.value)}
           >
             {SORT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
             ))}
           </select>
         </div>
@@ -399,27 +392,13 @@ export default function FairbetLivePage() {
             Reset
           </button>
         </div>
-
-        <div className={styles.filterGroup} style={{ marginLeft: "auto" }}>
-          <span className={styles.autoRefresh}>
-            <span className={styles.autoRefreshDot} />
-            Auto-refreshing every 15s
-          </span>
-          <button
-            className={styles.refreshButton}
-            onClick={() => { setLoading(true); loadAllLiveOdds(); }}
-            disabled={loading}
-          >
-            {loading ? "Refreshing..." : "Refresh Now"}
-          </button>
-        </div>
       </div>
 
       {error && <div className={styles.error}>Error: {error}</div>}
 
-      {loading && gameLiveData.length === 0 ? (
+      {loading ? (
         <div className={styles.loading}>Scanning for live games...</div>
-      ) : gameLiveData.length === 0 ? (
+      ) : liveGames.length === 0 ? (
         <div className={styles.empty}>
           No live games found.{" "}
           {selectedLeague
@@ -427,48 +406,18 @@ export default function FairbetLivePage() {
             : "Games appear here automatically when bookmakers post in-game lines."}
         </div>
       ) : (
-        gameLiveData.map((gd) => {
-          if (!gd.data) return null;
-          const filteredBets = getFilteredBets(gd.data);
-          if (filteredBets.length === 0) return null;
-
-          return (
-            <div key={gd.game.game_id} className={styles.gameSection}>
-              <div className={styles.gameHeader}>
-                <span className={styles.gameHeaderLeague}>
-                  {gd.game.league_code}
-                </span>
-                <span className={styles.gameHeaderMatchup}>
-                  {gd.data.away_team} @ {gd.data.home_team}
-                </span>
-                <span className={styles.gameHeaderStatus}>
-                  <span className={styles.gameHeaderDot} />
-                  {gd.game.status ?? "LIVE"}
-                </span>
-                {gd.data.last_updated_at && (
-                  <span className={styles.gameHeaderUpdated}>
-                    Updated {formatLastSync(gd.data.last_updated_at)}
-                  </span>
-                )}
-                <span className={styles.gameHeaderCount}>
-                  {filteredBets.length} bet{filteredBets.length !== 1 ? "s" : ""}
-                </span>
-              </div>
-              <div className={styles.gameBetsGrid}>
-                {filteredBets.map((bet, betIdx) => (
-                  <BetCard
-                    key={`${gd.game.game_id}-${betIdx}`}
-                    bet={bet}
-                    idx={`${gd.game.game_id}-${betIdx}`}
-                    openDerivation={openDerivation}
-                    setOpenDerivation={setOpenDerivation}
-                    derivationRef={derivationRef}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })
+        liveGames.map((game) => (
+          <GameLiveSection
+            key={game.gameId}
+            game={game}
+            selectedCategory={selectedCategory}
+            selectedSort={selectedSort}
+            excludeAlternates={excludeAlternates}
+            openDerivation={openDerivation}
+            setOpenDerivation={setOpenDerivation}
+            derivationRef={derivationRef}
+          />
+        ))
       )}
     </div>
   );

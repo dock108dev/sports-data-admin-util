@@ -16,15 +16,23 @@ from ..logging import logger
 
 # Key prefix in Redis
 _KEY_PREFIX = "odds_api:weekly_credits"
+_DAY_PREFIX = "odds_api:daily_credits"
 
 # TTL slightly longer than a week so the key survives the full ISO week
 _KEY_TTL_SECONDS = 8 * 86_400  # 8 days
+# Daily counter lives 2 days — long enough to survive the full calendar day plus buffer
+_DAY_KEY_TTL_SECONDS = 2 * 86_400  # 2 days
 
 
 def _week_key() -> str:
     """Return the Redis key for the current ISO week."""
     iso = date.today().isocalendar()
     return f"{_KEY_PREFIX}:{iso[0]}:{iso[1]}"
+
+
+def _day_key() -> str:
+    today = date.today()
+    return f"{_DAY_PREFIX}:{today.year}:{today.month}:{today.day}"
 
 
 def _get_redis():  # noqa: ANN202
@@ -44,23 +52,38 @@ def get_weekly_cap() -> int:
 
 
 def record_usage(credits_used: int) -> int:
-    """Increment weekly usage counter by *credits_used*.
+    """Increment weekly and daily usage counters by *credits_used*.
 
-    Returns the new cumulative total for the week.
+    Returns the new cumulative weekly total.
     """
     if credits_used <= 0:
         return get_weekly_usage()
 
     try:
         r = _get_redis()
-        key = _week_key()
-        new_total = r.incrby(key, credits_used)
-        # Ensure TTL is set (idempotent — only sets if no TTL yet)
-        if r.ttl(key) < 0:
-            r.expire(key, _KEY_TTL_SECONDS)
+        week_key = _week_key()
+        day_key = _day_key()
+        new_total = r.incrby(week_key, credits_used)
+        # Ensure TTLs are set (idempotent — only sets if no TTL yet)
+        if r.ttl(week_key) < 0:
+            r.expire(week_key, _KEY_TTL_SECONDS)
+        r.incrby(day_key, credits_used)
+        if r.ttl(day_key) < 0:
+            r.expire(day_key, _DAY_KEY_TTL_SECONDS)
         return int(new_total)
     except Exception as exc:
         logger.warning("odds_quota_record_failed", error=str(exc))
+        return 0
+
+
+def get_daily_usage() -> int:
+    """Return credits used so far today (UTC calendar day)."""
+    try:
+        r = _get_redis()
+        val = r.get(_day_key())
+        return int(val) if val else 0
+    except Exception as exc:
+        logger.warning("odds_quota_daily_read_failed", error=str(exc))
         return 0
 
 

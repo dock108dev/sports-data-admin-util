@@ -8,8 +8,6 @@ possession probability distributions for the rotation-aware simulator.
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

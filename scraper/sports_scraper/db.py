@@ -37,6 +37,7 @@ try:
         SportsGameFlow,
         SportsGameTimelineArtifact,
     )
+    from app.db.quality_review import QualityReviewQueue  # type: ignore
     from app.db.mlb_advanced import (  # type: ignore
         MLBGameAdvancedStats,
         MLBPitcherGameStats,
@@ -129,6 +130,7 @@ try:
         # Flow models
         SportsGameTimelineArtifact=SportsGameTimelineArtifact,
         SportsGameFlow=SportsGameFlow,
+        QualityReviewQueue=QualityReviewQueue,
         # Scraper models
         SportsScrapeRun=SportsScrapeRun,
         SportsJobRun=SportsJobRun,

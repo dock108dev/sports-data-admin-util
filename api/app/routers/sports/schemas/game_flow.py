@@ -7,6 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .common import ScoreObject
+
+__all__ = ["ScoreObject"]
+
 
 class MomentPlayerStat(BaseModel):
     """Player stat entry for cumulative box score."""
@@ -75,8 +79,8 @@ class GameFlowMoment(BaseModel):
     period: int
     start_clock: str | None = Field(None, alias="startClock")
     end_clock: str | None = Field(None, alias="endClock")
-    score_before: list[int] = Field(..., alias="scoreBefore")
-    score_after: list[int] = Field(..., alias="scoreAfter")
+    score_before: ScoreObject = Field(..., alias="scoreBefore")
+    score_after: ScoreObject = Field(..., alias="scoreAfter")
     narrative: str | None = None  # Narrative is in blocks_json, not moments_json
     cumulative_box_score: MomentBoxScore | None = Field(None, alias="cumulativeBoxScore")
 
@@ -95,8 +99,7 @@ class GameFlowPlay(BaseModel):
     clock: str | None
     play_type: str | None = Field(None, alias="playType")
     description: str | None
-    home_score: int | None = Field(None, alias="homeScore")
-    away_score: int | None = Field(None, alias="awayScore")
+    score: ScoreObject | None = None
 
 
 class GameFlowContent(BaseModel):
@@ -131,8 +134,8 @@ class GameFlowBlock(BaseModel):
     moment_indices: list[int] = Field(..., alias="momentIndices")
     period_start: int = Field(..., alias="periodStart")
     period_end: int = Field(..., alias="periodEnd")
-    score_before: list[int] = Field(..., alias="scoreBefore")
-    score_after: list[int] = Field(..., alias="scoreAfter")
+    score_before: ScoreObject = Field(..., alias="scoreBefore")
+    score_after: ScoreObject = Field(..., alias="scoreAfter")
     play_ids: list[int] = Field(..., alias="playIds")
     key_play_ids: list[int] = Field(..., alias="keyPlayIds")
     narrative: str | None = None
@@ -171,6 +174,44 @@ class GameFlowResponse(BaseModel):
     away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
     away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
     league_code: str | None = Field(None, alias="leagueCode")
+
+
+class ConsumerGameFlowResponse(BaseModel):
+    """Consumer-safe Game Flow response for GET /api/v1/games/{id}/flow.
+
+    Blocks are the consumer contract. Moments are pipeline-internal and
+    not exposed here. Admin tooling uses GameFlowResponse instead.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    game_id: int = Field(..., alias="gameId")
+    plays: list[GameFlowPlay]
+    blocks: list[GameFlowBlock] = Field(default_factory=list)
+    total_words: int | None = Field(None, alias="totalWords")
+    home_team: str | None = Field(None, alias="homeTeam")
+    away_team: str | None = Field(None, alias="awayTeam")
+    home_team_abbr: str | None = Field(None, alias="homeTeamAbbr")
+    away_team_abbr: str | None = Field(None, alias="awayTeamAbbr")
+    home_team_color_light: str | None = Field(None, alias="homeTeamColorLight")
+    home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
+    away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
+    away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
+    league_code: str | None = Field(None, alias="leagueCode")
+
+
+class FlowStatusResponse(BaseModel):
+    """Returned when a flow is not yet available for a game.
+
+    RECAP_PENDING: game is FINAL but flow generation is in progress.
+    PREGAME / IN_PROGRESS / POSTPONED / CANCELED: non-final game states.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    game_id: int = Field(..., alias="gameId")
+    status: str  # RECAP_PENDING | IN_PROGRESS | PREGAME | SCHEDULED | POSTPONED | CANCELED
+    eta_minutes: int | None = Field(None, alias="etaMinutes")
 
 
 class TimelineArtifactResponse(BaseModel):

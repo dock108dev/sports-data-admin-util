@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
 from ..db import db_models
@@ -15,6 +17,17 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from ..models import NormalizedPlay
+
+
+def _notify_pbp_event(session: "Session", game_id: int) -> None:
+    """Emit pg_notify('pbp_event', ...) within the current transaction. Best-effort."""
+    try:
+        payload = json.dumps({"game_id": game_id, "event_type": "pbp_event"})
+        session.execute(
+            text("SELECT pg_notify('pbp_event', :p)"), {"p": payload}
+        )
+    except Exception:
+        pass
 
 
 def create_raw_pbp_snapshot(
@@ -321,5 +334,7 @@ def upsert_plays(
                 game.home_score = pbp_home
                 game.away_score = pbp_away
                 session.flush()
+
+        _notify_pbp_event(session, game_id)
 
     return plays_processed

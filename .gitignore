@@ -68,6 +68,10 @@ coverage_html/
 # Benchmark artifacts
 .benchmarks/
 
+# Load test result files (uploaded as CI artifacts; not committed)
+tests/load/results/*.json
+tests/load/results/*.html
+
 # Generated build files
 web/next-env.d.ts
 
@@ -76,3 +80,4 @@ game_data/*
 
 # AIDLC working directory
 .aidlc/*
+docs/archived/*

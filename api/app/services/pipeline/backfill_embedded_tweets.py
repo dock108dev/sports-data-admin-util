@@ -23,11 +23,12 @@ from sqlalchemy.orm import attributes, selectinload
 from ...db import AsyncSession
 from ...db.flow import SportsGameFlow
 from ...db.sports import SportsGame
-from .stages.embedded_tweets import load_and_attach_embedded_tweets
+from .stages.embedded_tweets import load_and_attach_embedded_tweets, validate_embedded_tweet_ids
 
 logger = logging.getLogger(__name__)
 
-FLOW_VERSION = "v2-moments"
+# See docs/gameflow/version-semantics.md.
+FLOW_VERSION = "v2-blocks"
 
 
 async def backfill_embedded_tweets_for_game(
@@ -54,7 +55,6 @@ async def backfill_embedded_tweets_for_game(
         Dict with status and details of the backfill operation.
     """
     if flow is None:
-        # Load the flow (single-game entry point)
         flow_result = await session.execute(
             select(SportsGameFlow).where(
                 SportsGameFlow.game_id == game_id,
@@ -118,6 +118,9 @@ async def backfill_embedded_tweets_for_game(
             "status": "no_tweets_assigned",
             "candidates": selection.total_candidates,
         }
+
+    # Validate all embedded tweet references exist before writing.
+    updated_blocks = await validate_embedded_tweet_ids(session, updated_blocks, game_id)
 
     # Persist updated blocks
     flow.blocks_json = updated_blocks

@@ -1,37 +1,49 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.responses import JSONResponse
 
 from app.analytics.api.analytics_routes import router as analytics_router
 from app.config import settings
-from app.db import _get_engine
+from app.db import _get_engine, get_async_session
+from app.otel import configure_telemetry, instrument_fastapi
+from app.db.telemetry import CircuitBreakerTripEvent
 from app.dependencies.auth import verify_api_key
 from app.dependencies.roles import require_admin, require_user
 from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.realtime.listener import pg_listener
 from app.realtime.manager import realtime_manager
 from app.realtime.poller import db_poller
+from app.realtime.streams import RedisStreamsBridge
 from app.realtime.sse import router as sse_router
 from app.realtime.ws import router as ws_router
 from app.routers import auth, fairbet, preferences, simulator, social, sports
+from app.routers.v1 import router as v1_router
 from app.routers.model_odds import router as model_odds_router
 from app.routers.golf import router as golf_router
 from app.routers.admin import (
+    circuit_breakers,
+    coverage_report,
     odds_sync,
     pbp,
     pipeline,
+    quality_review,
+    quality_summary,
+    realtime as admin_realtime,
     resolution,
     task_control,
     timeline_jobs,
     users,
 )
+from app.services.circuit_breaker_registry import registry as _cb_registry
 
 configure_logging(
     service="sports-data-admin-api",
@@ -39,19 +51,81 @@ configure_logging(
     log_level=settings.log_level,
 )
 
+configure_telemetry(service_name="sports-data-admin-api", environment=settings.environment)
+
+_flush_logger = logging.getLogger(__name__ + ".cb_flush")
+
+
+async def _circuit_breaker_flush_loop() -> None:
+    """Drain pending circuit breaker trip events to DB every 10 seconds."""
+    while True:
+        await asyncio.sleep(10)
+        events = _cb_registry.drain_pending()
+        if not events:
+            continue
+        try:
+            async with get_async_session() as session:
+                for ev in events:
+                    session.add(
+                        CircuitBreakerTripEvent(
+                            breaker_name=ev.breaker_name,
+                            reason=ev.reason,
+                            tripped_at=ev.tripped_at,
+                        )
+                    )
+        except Exception:
+            _flush_logger.warning(
+                "circuit_breaker_flush_error",
+                exc_info=True,
+                extra={"pending_count": len(events)},
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start/stop background tasks (DB poller for realtime events)."""
-    db_poller.start()
-    yield
-    await db_poller.stop()
+    """Start background tasks: streams bridge, LISTEN/NOTIFY listener, CB flush."""
+    bridge = RedisStreamsBridge(settings.redis_url, realtime_manager.boot_epoch)
+    realtime_manager.set_streams_bridge(bridge)
+    await bridge.start(realtime_manager._dispatch_local)
 
+    db_poller.start()
+    pg_listener.start()
+    flush_task = asyncio.create_task(_circuit_breaker_flush_loop())
+    yield
+    flush_task.cancel()
+    await pg_listener.stop()
+    await db_poller.stop()
+    await bridge.stop()
+
+
+_is_prod = settings.environment in {"production", "staging"}
 
 app = FastAPI(
     title="sports-data-admin",
     version="1.0.0",
     lifespan=lifespan,
+    # Disable interactive docs in production to reduce attack surface.
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
     openapi_tags=[
+        {
+            "name": "v1",
+            "description": (
+                "**Consumer API v1** — Public read-only endpoints. "
+                "Requires a valid ``X-API-Key`` header. Per-IP rate limiting applies. "
+                "Response shapes are consumer-safe (pipeline internals omitted)."
+            ),
+        },
+        {
+            "name": "admin",
+            "description": (
+                "**Admin API** — Mutating and operational endpoints under "
+                "``/api/admin/``. Admin role required. Never mixed with "
+                "consumer ``/api/v1/`` routes (enforced by "
+                "``scripts/lint_router_namespaces.py``)."
+            ),
+        },
         {
             "name": "auth",
             "description": (
@@ -89,15 +163,29 @@ app = FastAPI(
 )
 logger = logging.getLogger(__name__)
 
+instrument_fastapi(app)
+
 app.add_middleware(StructuredLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
+
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception(
+        "unhandled_exception",
+        extra={"path": request.url.path, "method": request.method},
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # ---------------------------------------------------------------------------
 # Admin-internal API key dependency (used by admin UI routers)
@@ -109,6 +197,12 @@ auth_dependency = [Depends(verify_api_key)]
 # ---------------------------------------------------------------------------
 user_dependency = [Depends(verify_api_key), Depends(require_user)]
 admin_dependency = [Depends(verify_api_key), Depends(require_admin)]
+
+# ---------------------------------------------------------------------------
+# Consumer v1 API — read-only endpoints, per-IP rate limited.
+# Auth (verify_consumer_api_key) is applied at the router level in v1/__init__.py.
+# ---------------------------------------------------------------------------
+app.include_router(v1_router)
 
 # ---------------------------------------------------------------------------
 # Auth — public (no API key needed for signup/login/me)
@@ -184,9 +278,39 @@ app.include_router(
     dependencies=admin_dependency,
 )
 app.include_router(
+    circuit_breakers.router,
+    prefix="/api/admin",
+    tags=["admin", "circuit-breakers"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    coverage_report.router,
+    prefix="/api/admin",
+    tags=["admin", "pipeline"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    quality_summary.router,
+    prefix="/api/admin",
+    tags=["admin", "quality"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    quality_review.router,
+    prefix="/api/admin",
+    tags=["admin", "quality"],
+    dependencies=admin_dependency,
+)
+app.include_router(
     users.router,
     prefix="/api/admin",
     tags=["admin", "users"],
+    dependencies=admin_dependency,
+)
+app.include_router(
+    admin_realtime.router,
+    prefix="/api/admin",
+    tags=["admin", "realtime"],
     dependencies=admin_dependency,
 )
 
@@ -200,9 +324,10 @@ app.include_router(sse_router, tags=["realtime"])
 
 @app.get("/v1/realtime/status", dependencies=auth_dependency, tags=["realtime"])
 async def realtime_status() -> JSONResponse:
-    """Connected counts per channel and mode, plus poller debug info."""
+    """Connected counts per channel and mode, plus listener debug info."""
     data = realtime_manager.status()
     data["poller"] = db_poller.stats()
+    data["listener"] = pg_listener.stats()
     return JSONResponse(data)
 
 

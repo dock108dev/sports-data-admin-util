@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     # API Authentication
     # Required in production - all endpoints except /healthz require this key
     api_key: str | None = Field(default=None, alias="API_KEY")
+    # Consumer-scoped API key for /api/v1/ routes. When set, admin and consumer
+    # keys are distinct; each is rejected on the other's namespace. When unset,
+    # api_key serves both namespaces (single-key fallback for dev/simple setups).
+    consumer_api_key: str | None = Field(default=None, alias="CONSUMER_API_KEY")
+
+    # Per-class rate limits enforced by RateLimitMiddleware.
+    # Consumer routes (/api/v1/) use rate_limit_requests / rate_limit_window_seconds.
+    # Admin routes (/api/admin/) use the tighter limits below.
+    admin_rate_limit_requests: int = Field(default=20, alias="ADMIN_RATE_LIMIT_REQUESTS")
+    admin_rate_limit_window_seconds: int = Field(default=60, alias="ADMIN_RATE_LIMIT_WINDOW_SECONDS")
 
     # JWT / User Authentication
     # AUTH_ENABLED=false returns admin role for all requests (feature flag fallback)
@@ -181,6 +191,10 @@ class Settings(BaseSettings):
                 )
             if len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be at least 32 characters long.")
+            if not self.auth_enabled:
+                raise ValueError(
+                    "AUTH_ENABLED must not be False in production or staging."
+                )
         if self.rate_limit_requests <= 0 or self.rate_limit_window_seconds <= 0:
             raise ValueError("Rate limit settings must be positive integers.")
         if self.fairbet_odds_cache_ttl_seconds <= 0:

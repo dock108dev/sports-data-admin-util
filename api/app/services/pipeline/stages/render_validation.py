@@ -69,9 +69,6 @@ PBP_ARTIFACT_PATTERNS = [
     (r":\s+[a-zA-Z]", lambda m: ". " + m.group(0)[-1].upper()),
 ]
 
-# Maximum regeneration attempts for play coverage recovery
-MAX_REGENERATION_ATTEMPTS = 2
-
 
 def validate_style_constraints(
     narrative: str,

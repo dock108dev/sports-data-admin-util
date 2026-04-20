@@ -12,28 +12,34 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
+from app.services.circuit_breaker_registry import registry as _cb_registry
 
 logger = logging.getLogger(__name__)
 
+_BREAKER_NAME = "fairbet_redis"
 _CACHE_PREFIX = "fairbet:odds:cache:v1"
 _SNAPSHOT_PREFIX = "fairbet:odds:snapshot:v1"
 _LIMITER_PREFIX = "ratelimit:fairbet:odds"
 _redis_error_until: float = 0.0
 _REDIS_CIRCUIT_SECONDS = 15.0
 
+_cb_registry.register(_BREAKER_NAME)
+
 
 def _circuit_open() -> bool:
     return time.time() < _redis_error_until
 
 
-def _trip_circuit() -> None:
+def _trip_circuit(reason: str = "redis_error") -> None:
     global _redis_error_until
     _redis_error_until = time.time() + _REDIS_CIRCUIT_SECONDS
+    _cb_registry.record_trip(_BREAKER_NAME, reason)
 
 
 def _reset_circuit() -> None:
     global _redis_error_until
     _redis_error_until = 0.0
+    _cb_registry.record_reset(_BREAKER_NAME)
 
 
 def get_redis_client():
@@ -89,7 +95,7 @@ def get_cached_response(query_hash: str, content_version: str) -> dict[str, Any]
             return None
         return json.loads(raw)
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"fairbet_cache_read_error: {exc}")
         logger.warning("fairbet_cache_read_error", extra={"error": str(exc)})
         return None
 
@@ -108,7 +114,7 @@ def set_cached_response(
         r.setex(cache_key(query_hash, content_version), ttl, json.dumps(payload, default=str))
         _reset_circuit()
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"fairbet_cache_write_error: {exc}")
         logger.warning("fairbet_cache_write_error", extra={"error": str(exc)})
 
 
@@ -136,7 +142,7 @@ def create_snapshot(
         )
         _reset_circuit()
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"fairbet_snapshot_write_error: {exc}")
         logger.warning("fairbet_snapshot_write_error", extra={"error": str(exc)})
         return None, generated
     return sid, generated
@@ -153,7 +159,7 @@ def get_snapshot(snapshot_id: str) -> dict[str, Any] | None:
             return None
         return json.loads(raw)
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"fairbet_snapshot_read_error: {exc}")
         logger.warning("fairbet_snapshot_read_error", extra={"error": str(exc)})
         return None
 

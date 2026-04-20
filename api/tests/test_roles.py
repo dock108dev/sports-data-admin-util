@@ -23,13 +23,13 @@ class TestCreateAccessToken:
 
     def test_creates_valid_jwt(self) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 60
 
             token = create_access_token(user_id=1, role="user")
 
-        payload = jwt.decode(token, "test-secret-key", algorithms=["HS256"])
+        payload = jwt.decode(token, "test-secret-key-padded-to-32bytes", algorithms=["HS256"])
         assert payload["sub"] == "1"
         assert payload["role"] == "user"
         assert "exp" in payload
@@ -37,25 +37,25 @@ class TestCreateAccessToken:
 
     def test_admin_role_in_token(self) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 60
 
             token = create_access_token(user_id=42, role="admin")
 
-        payload = jwt.decode(token, "test-secret-key", algorithms=["HS256"])
+        payload = jwt.decode(token, "test-secret-key-padded-to-32bytes", algorithms=["HS256"])
         assert payload["sub"] == "42"
         assert payload["role"] == "admin"
 
     def test_expiry_is_set_correctly(self) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 120
 
             token = create_access_token(user_id=1, role="user")
 
-        payload = jwt.decode(token, "test-secret-key", algorithms=["HS256"])
+        payload = jwt.decode(token, "test-secret-key-padded-to-32bytes", algorithms=["HS256"])
         exp = datetime.fromtimestamp(payload["exp"], tz=UTC)
         iat = datetime.fromtimestamp(payload["iat"], tz=UTC)
         delta = exp - iat
@@ -67,7 +67,7 @@ class TestDecodeAccessToken:
 
     def test_valid_token_decoded(self) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 60
 
@@ -78,7 +78,7 @@ class TestDecodeAccessToken:
         assert payload["role"] == "admin"
 
     def test_expired_token_raises(self) -> None:
-        secret = "test-secret-key"
+        secret = "test-secret-key-padded-to-32bytes"
         payload = {
             "sub": "1",
             "role": "user",
@@ -95,7 +95,7 @@ class TestDecodeAccessToken:
 
     def test_invalid_token_raises(self) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
 
             with pytest.raises(jwt.PyJWTError):
@@ -135,7 +135,7 @@ class TestResolveRole:
     async def test_valid_user_token(self, mock_request: MagicMock) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
             mock_settings.auth_enabled = True
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 60
 
@@ -153,7 +153,7 @@ class TestResolveRole:
     async def test_valid_admin_token(self, mock_request: MagicMock) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
             mock_settings.auth_enabled = True
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
             mock_settings.jwt_expire_minutes = 60
 
@@ -167,7 +167,7 @@ class TestResolveRole:
 
     @pytest.mark.asyncio
     async def test_expired_token_raises_401(self, mock_request: MagicMock) -> None:
-        secret = "test-secret-key"
+        secret = "test-secret-key-padded-to-32bytes"
         payload = {
             "sub": "1",
             "role": "user",
@@ -193,7 +193,7 @@ class TestResolveRole:
     async def test_invalid_token_raises_401(self, mock_request: MagicMock) -> None:
         with patch("app.dependencies.roles.settings") as mock_settings:
             mock_settings.auth_enabled = True
-            mock_settings.jwt_secret = "test-secret-key"
+            mock_settings.jwt_secret = "test-secret-key-padded-to-32bytes"
             mock_settings.jwt_algorithm = "HS256"
 
             creds = MagicMock()
@@ -206,7 +206,7 @@ class TestResolveRole:
 
     @pytest.mark.asyncio
     async def test_unknown_role_defaults_to_user(self, mock_request: MagicMock) -> None:
-        secret = "test-secret-key"
+        secret = "test-secret-key-padded-to-32bytes"
         payload = {
             "sub": "1",
             "role": "superuser",

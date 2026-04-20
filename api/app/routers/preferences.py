@@ -61,7 +61,7 @@ def _validate_settings(raw: dict) -> dict:
     """Strip unknown or oversized settings values."""
     if len(raw) > MAX_PAYLOAD_KEYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"settings may have at most {MAX_PAYLOAD_KEYS} keys",
         )
     return raw
@@ -84,7 +84,7 @@ def _normalize_leagues(values: list[str] | None) -> list[str]:
     for value in values:
         if not isinstance(value, str):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail="scoreHideLeagues must contain strings",
             )
         item = str(value).strip().upper()
@@ -92,7 +92,7 @@ def _normalize_leagues(values: list[str] | None) -> list[str]:
             continue
         if len(item) > MAX_HIDE_VALUE_LEN:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail=f"scoreHideLeagues values must be <= {MAX_HIDE_VALUE_LEN} chars",
             )
         if item not in seen:
@@ -100,7 +100,7 @@ def _normalize_leagues(values: list[str] | None) -> list[str]:
             normalized.append(item)
     if len(normalized) > MAX_HIDE_LEAGUES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"scoreHideLeagues max {MAX_HIDE_LEAGUES}",
         )
     return normalized
@@ -114,7 +114,7 @@ def _normalize_teams(values: list[str] | None) -> list[str]:
     for value in values:
         if not isinstance(value, str):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail="scoreHideTeams must contain strings",
             )
         item = str(value).strip()
@@ -122,7 +122,7 @@ def _normalize_teams(values: list[str] | None) -> list[str]:
             continue
         if len(item) > MAX_HIDE_VALUE_LEN:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail=f"scoreHideTeams values must be <= {MAX_HIDE_VALUE_LEN} chars",
             )
         dedupe_key = item.casefold()
@@ -131,7 +131,7 @@ def _normalize_teams(values: list[str] | None) -> list[str]:
             normalized.append(item)
     if len(normalized) > MAX_HIDE_TEAMS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"scoreHideTeams max {MAX_HIDE_TEAMS}",
         )
     return normalized

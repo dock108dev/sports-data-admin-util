@@ -36,13 +36,15 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv --python 3.12
+          source .venv/bin/activate
           uv pip install -e ./scraper
           uv pip install pytest pytest-cov
+          python -c "import pytest_cov; print('pytest-cov', pytest_cov.__version__)"
       - name: Run scraper tests with coverage
         working-directory: scraper
         run: |
           source ../.venv/bin/activate
-          pytest tests/ \
+          python -m pytest tests/ \
             --cov=sports_scraper \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
@@ -68,15 +70,19 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv --python 3.12
+          source .venv/bin/activate
           uv pip install -r api/requirements.txt
-          uv pip install pytest pytest-cov pytest-asyncio
+          uv pip install pytest pytest-cov pytest-asyncio pytest-timeout
+          python -c "import pytest_cov; print('pytest-cov', pytest_cov.__version__)"
       - name: Run API tests with coverage
         working-directory: api
         env:
           PYTHONPATH: .
         run: |
           source ../.venv/bin/activate
-          pytest tests/ \
+          python -m pytest tests/ \
+            --timeout=60 \
+            --timeout-method=signal \
             --cov=app \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
@@ -104,10 +110,141 @@ jobs:
         working-directory: web
         run: pnpm lint
 
+  lint-no-swap-score:
+    name: Lint · No _swap_score
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Ensure _swap_score is not re-introduced
+        run: |
+          if grep -r '_swap_score' api/ scraper/ --include='*.py' -l; then
+            echo "ERROR: _swap_score found in Python sources. This helper was removed in ISSUE-016; use ScoreObject {home, away} instead."
+            exit 1
+          fi
+          echo "OK: _swap_score not found."
+
+  lint-camel-case-schemas:
+    name: Lint · camelCase response schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check all Pydantic response models have camelCase aliases
+        run: python scripts/lint_camel_case_schemas.py
+
+  lint-router-namespaces:
+    name: Lint · Router namespaces (/api/v1 vs /api/admin)
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install API dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -r api/requirements.txt
+      - name: Scan router registrations
+        run: |
+          source .venv/bin/activate
+          python scripts/lint_router_namespaces.py
+
+  lint-fk-ondelete:
+    name: Lint · FK ondelete declarations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check all ForeignKey() calls declare ondelete=
+        run: python scripts/lint_fk_ondelete.py
+
+  lint-guardrails-sync:
+    name: Lint · guardrails.ts ↔ validate_blocks.py sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check guardrails.ts mirrors validate_blocks.py constants
+        run: python scripts/check_guardrails_sync.py
+
+  lint-api-schema:
+    name: Lint · camelCase fields in /api/v1/ OpenAPI schema
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install API dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -r api/requirements.txt
+      - name: Dump OpenAPI schema and scan /api/v1/ response fields
+        run: |
+          source .venv/bin/activate
+          python scripts/lint_openapi_camel_case.py
+
+  lint-js-core-sync:
+    name: Lint · js-core types sync with /api/v1/ schema
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install API dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -r api/requirements.txt
+      - name: Check js-core types cover all /api/v1/ response fields
+        run: |
+          source .venv/bin/activate
+          python scripts/check_js_core_sync.py
+
   compile:
     name: Compile
     runs-on: ubuntu-latest
-    needs: [test-scraper, test-api, lint-web]
+    needs:
+      - test-scraper
+      - test-api
+      - lint-web
+      - lint-no-swap-score
+      - lint-camel-case-schemas
+      - lint-router-namespaces
+      - lint-api-schema
+      - lint-guardrails-sync
+      - lint-fk-ondelete
+      - lint-js-core-sync
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

@@ -13,12 +13,17 @@ import json
 import logging
 import time
 
+from app.services.circuit_breaker_registry import registry as _cb_registry
+
 logger = logging.getLogger(__name__)
 
+_BREAKER_NAME = "live_odds_redis"
 # Simple circuit breaker: after a Redis failure, skip retries for this many
 # seconds to avoid hammering a dead Redis on every request.
 _CIRCUIT_BREAK_SECONDS = 30.0
 _redis_error_until: float = 0.0
+
+_cb_registry.register(_BREAKER_NAME)
 
 # Key patterns (must match scraper/sports_scraper/live_odds/redis_store.py)
 _SNAPSHOT_KEY = "live:odds:{league}:{game_id}:{market_key}"
@@ -30,16 +35,18 @@ def _circuit_open() -> bool:
     return time.time() < _redis_error_until
 
 
-def _trip_circuit() -> None:
+def _trip_circuit(reason: str = "redis_error") -> None:
     """Trip the circuit breaker after a Redis failure."""
     global _redis_error_until
     _redis_error_until = time.time() + _CIRCUIT_BREAK_SECONDS
+    _cb_registry.record_trip(_BREAKER_NAME, reason)
 
 
 def _reset_circuit() -> None:
     """Reset the circuit breaker after a successful Redis call."""
     global _redis_error_until
     _redis_error_until = 0.0
+    _cb_registry.record_reset(_BREAKER_NAME)
 
 
 def _get_redis():
@@ -72,7 +79,7 @@ def read_live_snapshot(
         raw = r.get(key)
         _reset_circuit()
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"live_odds_redis_read_error: {exc}")
         logger.warning("live_odds_redis_read_error", extra={
             "game_id": game_id, "market_key": market_key, "error": str(exc)
         })
@@ -121,7 +128,7 @@ def read_all_live_snapshots_for_game(
         _reset_circuit()
         return result, None
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"live_odds_redis_scan_error: {exc}")
         logger.warning("live_odds_redis_scan_error", extra={
             "game_id": game_id, "error": str(exc)
         })
@@ -145,7 +152,7 @@ def read_live_history(
         raw_list = r.lrange(key, 0, count - 1)
         _reset_circuit()
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"live_odds_redis_history_error: {exc}")
         logger.warning("live_odds_redis_history_error", extra={
             "game_id": game_id, "market_key": market_key, "error": str(exc)
         })
@@ -185,6 +192,6 @@ def discover_live_game_ids(league: str | None = None) -> list[tuple[str, int]]:
         _reset_circuit()
         return sorted(seen)
     except Exception as exc:
-        _trip_circuit()
+        _trip_circuit(f"live_odds_redis_discover_error: {exc}")
         logger.warning("live_odds_redis_discover_error", extra={"error": str(exc)})
         return []

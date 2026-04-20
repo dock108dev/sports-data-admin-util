@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analytics.sports.nfl.constants import (
     BASELINE_EPA_PER_PLAY,
     BASELINE_SUCCESS_RATE,
-    BASELINE_TURNOVER_RATE,
     DEFAULT_DRIVE_PROBS,
     EXTRA_POINT_SUCCESS_RATE,
     FIELD_GOAL_SUCCESS_RATE,

@@ -12,10 +12,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.sports.nba.constants import (
-    BASELINE_DEF_RATING,
-    DEFAULT_EVENT_PROBS_SUFFIXED,
-)
 
 logger = logging.getLogger(__name__)
 

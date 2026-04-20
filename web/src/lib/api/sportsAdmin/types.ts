@@ -1,3 +1,5 @@
+import type { ScoreObject } from "./gameFlowTypes";
+
 export type ScrapeRunConfig = {
   leagueCode?: string;
   season?: number;
@@ -16,19 +18,19 @@ export type ScrapeRunConfig = {
 
 export type ScrapeRunResponse = {
   id: number;
-  league_code: string;
+  leagueCode: string;
   status: string;
-  scraper_type: string;
-  job_id: string | null;
+  scraperType: string;
+  jobId: string | null;
   season: number | null;
-  start_date: string | null;
-  end_date: string | null;
+  startDate: string | null;
+  endDate: string | null;
   summary: string | null;
-  error_details: string | null;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  requested_by: string | null;
+  errorDetails: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  requestedBy: string | null;
   config: ScrapeRunConfig | null;
 };
 
@@ -38,8 +40,7 @@ export type GameSummary = {
   gameDate: string;
   homeTeam: string;
   awayTeam: string;
-  homeScore: number | null;
-  awayScore: number | null;
+  score: ScoreObject | null;
   hasBoxscore: boolean;
   hasPlayerStats: boolean;
   hasOdds: boolean;
@@ -57,6 +58,9 @@ export type GameSummary = {
   lastOddsAt: string | null;
   lastAdvancedStatsAt: string | null;
   derivedMetrics: Record<string, unknown> | null;
+  isLive: boolean;
+  isFinal: boolean;
+  isPregame: boolean;
 };
 
 export type GameListResponse = {
@@ -460,8 +464,8 @@ export type PlayEntry = {
   teamAbbreviation: string | null;
   playerName: string | null;
   description: string | null;
-  homeScore: number | null;
-  awayScore: number | null;
+  score: ScoreObject | null;
+  scoreBefore: ScoreObject | null;
   tier: number | null;
 };
 
@@ -483,8 +487,7 @@ export type AdminGameDetail = {
     awayTeam: string;
     homeTeamId: number | null;
     awayTeamId: number | null;
-    homeScore: number | null;
-    awayScore: number | null;
+    score: ScoreObject | null;
     status: string;
     scrapeVersion: number | null;
     lastScrapedAt: string | null;
@@ -502,6 +505,9 @@ export type AdminGameDetail = {
     hasAdvancedStats: boolean;
     playCount: number;
     socialPostCount: number;
+    isLive: boolean;
+    isFinal: boolean;
+    isPregame: boolean;
   };
   teamStats: TeamStat[];
   playerStats: PlayerStat[];
