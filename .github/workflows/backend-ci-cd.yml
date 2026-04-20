@@ -36,13 +36,15 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv --python 3.12
+          source .venv/bin/activate
           uv pip install -e ./scraper
           uv pip install pytest pytest-cov
+          python -c "import pytest_cov; print('pytest-cov', pytest_cov.__version__)"
       - name: Run scraper tests with coverage
         working-directory: scraper
         run: |
           source ../.venv/bin/activate
-          pytest tests/ \
+          python -m pytest tests/ \
             --cov=sports_scraper \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
@@ -68,15 +70,19 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv --python 3.12
+          source .venv/bin/activate
           uv pip install -r api/requirements.txt
-          uv pip install pytest pytest-cov pytest-asyncio
+          uv pip install pytest pytest-cov pytest-asyncio pytest-timeout
+          python -c "import pytest_cov; print('pytest-cov', pytest_cov.__version__)"
       - name: Run API tests with coverage
         working-directory: api
         env:
           PYTHONPATH: .
         run: |
           source ../.venv/bin/activate
-          pytest tests/ \
+          python -m pytest tests/ \
+            --timeout=60 \
+            --timeout-method=signal \
             --cov=app \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
