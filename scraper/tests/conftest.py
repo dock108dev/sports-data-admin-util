@@ -28,6 +28,26 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://user:pass@localhost:
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
+_MISSING = object()
+
+
+@pytest.fixture(autouse=True)
+def restore_runtime_module_stubs():
+    """Prevent per-test module monkeypatches from leaking across test files."""
+    names = (
+        "sports_scraper.db",
+        "sqlalchemy",
+        "sqlalchemy.dialects",
+        "sqlalchemy.dialects.postgresql",
+    )
+    originals = {name: sys.modules.get(name, _MISSING) for name in names}
+    yield
+    for name, original in originals.items():
+        if original is _MISSING:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+
 
 @pytest.fixture
 def mock_httpx_client():

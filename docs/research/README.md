@@ -62,7 +62,7 @@ Technical deep-dives that inform design decisions for Phase 1–6 work. Each doc
 | Doc | Question answered |
 |-----|------------------|
 | [x-twitter-data-alternatives.md](x-twitter-data-alternatives.md) | Alternatives to Playwright X scraping — X API v2 tiers, Apify, Bright Data, Nitter, hybrid approach; cost/reliability for 30 accounts at 30-min cadence |
-| [x-twitter-alternative-decision.md](x-twitter-alternative-decision.md) | **ADR**: Decision record for X/Twitter alternative — RSS/Atom feeds vs. Bluesky AT Protocol; outcome and prototype approach |
+| [x-twitter-data-alternatives.md](x-twitter-data-alternatives.md) | Evaluation of alternatives to Playwright X scraping (official APIs, RSS/Atom feeds, and third-party providers) |
 | [playwright-session-health-monitoring.md](playwright-session-health-monitoring.md) | Detecting Playwright cookie expiration before scraping failures — health probe patterns |
 | [session-cookie-health-detection.md](session-cookie-health-detection.md) | Session cookie validity detection techniques — lightweight probe requests, expiry heuristics |
 | [odds-api-credit-optimization.md](odds-api-credit-optimization.md) | Reducing The Odds API credit consumption — request batching, TTL tuning, selective polling by game state |
