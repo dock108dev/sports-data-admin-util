@@ -353,6 +353,7 @@ async def create_social_post(
         source_handle=payload.source_handle,
         media_type=payload.media_type,
         mapping_status="mapped",
+        game_phase="unknown",
     )
     session.add(post)
     await session.flush()
@@ -408,6 +409,7 @@ async def bulk_create_social_posts(
             source_handle=post_data.source_handle,
             media_type=post_data.media_type,
             mapping_status="mapped",
+            game_phase="unknown",
         )
         session.add(post)
         created_posts.append(post)

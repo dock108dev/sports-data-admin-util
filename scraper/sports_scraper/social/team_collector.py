@@ -296,6 +296,10 @@ class TeamTweetCollector:
                     media_type=post.media_type or "none",
                     source_handle=post.author_handle,
                     mapping_status="unmapped",
+                    # Initial value; tweet_mapper reclassifies to pregame/in_game/postgame
+                    # once a game is matched. Explicit here because the DB column is
+                    # NOT NULL and prod doesn't carry a SQL-level DEFAULT.
+                    game_phase="unknown",
                 ).on_conflict_do_nothing(index_elements=["external_post_id"])
                 result = session.execute(stmt)
                 if result.rowcount:
@@ -448,6 +452,10 @@ class TeamTweetCollector:
                         consecutive_hits=consecutive_breaker_hits,
                         error=str(exc),
                     )
+                    try:
+                        session.rollback()
+                    except Exception:
+                        logger.exception("team_collector_rollback_failed", team_id=team_id)
                     if consecutive_breaker_hits >= social_cfg.max_consecutive_breaker_hits:
                         logger.error(
                             "team_collector_batch_abort",
@@ -466,6 +474,13 @@ class TeamTweetCollector:
                         team_id=team_id,
                         error=str(exc),
                     )
+                    # Roll back so a failure mid-query doesn't poison the session's
+                    # transaction and cascade an InFailedSqlTransaction into every
+                    # subsequent team's first query.
+                    try:
+                        session.rollback()
+                    except Exception:
+                        logger.exception("team_collector_rollback_failed", team_id=team_id)
             else:
                 # Only reached if inner loop didn't break — game completed
                 games_completed += 1

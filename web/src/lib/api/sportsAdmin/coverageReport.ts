@@ -1,4 +1,4 @@
-const BASE = "/api/admin";
+import { request } from "./client";
 
 export interface SportBreakdownEntry {
   sport: string;
@@ -24,12 +24,5 @@ export interface CoverageReportResponse {
 }
 
 export async function getCoverageReport(): Promise<CoverageReportResponse> {
-  const res = await fetch(`${BASE}/pipeline/coverage-report`, {
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`coverage-report ${res.status}: ${text}`);
-  }
-  return res.json() as Promise<CoverageReportResponse>;
+  return request<CoverageReportResponse>("/api/admin/pipeline/coverage-report");
 }
