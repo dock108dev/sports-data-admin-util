@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db import AsyncSession, get_db
 from app.db.flow import SportsGameFlow
-from app.db.sports import SportsGame, SportsGamePlay
+from app.db.sports import GameStatus, SportsGame, SportsGamePlay
 from app.routers.sports.game_timeline import (
     FLOW_VERSION,
     _GAME_STATUS_TO_FLOW_STATUS,
@@ -24,7 +24,6 @@ from app.routers.sports.schemas import (
     GameFlowPlay,
 )
 from app.routers.sports.schemas.common import _score_obj
-from app.db.sports import GameStatus
 from app.services.team_colors import get_matchup_colors
 
 router = APIRouter()

@@ -137,7 +137,7 @@ class MLBMatchup:
             "home_run_probability": hr_prob,
         }
 
-        return normalize_probabilities(raw)
+        return _normalize_matchup_probs(raw)
 
     def team_offense_vs_pitching(
         self,
@@ -197,7 +197,7 @@ class MLBMatchup:
             "home_run_probability": hr_prob,
         }
 
-        return normalize_probabilities(raw)
+        return _normalize_matchup_probs(raw)
 
     def compare_metrics(
         self,
@@ -258,7 +258,7 @@ class MLBMatchup:
 # ---------------------------------------------------------------------------
 
 
-def normalize_probabilities(prob_dict: dict[str, float]) -> dict[str, float]:
+def _normalize_matchup_probs(prob_dict: dict[str, float]) -> dict[str, float]:
     """Ensure event probabilities leave room for the implicit "out" residual.
 
     The dict should contain only named non-out events (strikeout, walk,

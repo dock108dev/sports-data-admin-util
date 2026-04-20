@@ -76,3 +76,9 @@
 | [SSOT Cleanup](audits/ssot-cleanup.md) | PipelineStage, GameStatus, story_version consolidation |
 | [Docs Consolidation](audits/docs-consolidation.md) | Documentation audit passes — what was fixed and what was verified |
 | [Changelog](changelog.md) | Recent changes and releases |
+
+## Research
+
+| Guide | Description |
+|-------|-------------|
+| [Research Index](research/README.md) | Categorized index of 32 technical deep-dives covering event-driven architecture, realtime, API design, DB migrations, pipeline quality, and more |

@@ -1,6 +1,6 @@
 # Code Quality Cleanup Report
 
-> Run: 2026-04-18. Branch: aidlc_1. Updated: 2026-04-19 (Round 3 — TS formatting helpers + Python unused imports).
+> Run: 2026-04-18. Branch: aidlc_1. Updated: 2026-04-20 (Round 4 — import dedup, dead constant, name collision fixes).
 
 ## Summary
 
@@ -216,6 +216,26 @@ the same `decimals=1` default. Moved to `formatting.ts`; MLB and NHL import from
 | Pattern | Files | Notes |
 |---------|-------|-------|
 | `buildHeaders()` | `sportsAdmin/client.ts`, `fairbet/index.ts` | Same env var, different signatures |
-| `formatMetricValue` name collision | `formatting.ts`, `gameDetailUtils.tsx` | Different signatures — rename `gameDetailUtils` version to `formatOutcomeValue` |
 | `progress_from_index()` exact duplicate | `timeline_events.py`, `normalize_pbp_helpers.py` | Pipeline residue; audit before removing |
-| `normalize_probabilities` name collision | `probability_provider.py`, `mlb/matchup.py` | Different semantics — rename MLB version |
+
+---
+
+## Round 4 — Import Dedup, Dead Constant, Name Collisions (2026-04-20)
+
+### Duplicate Import Consolidated
+
+**`api/app/routers/v1/games.py`**
+- `GameStatus` was imported from `app.db.sports` on line 27, duplicating the import of `SportsGame` and `SportsGamePlay` from the same module on line 13. Merged into a single `from app.db.sports import GameStatus, SportsGame, SportsGamePlay`.
+
+### Dead Constant Removed
+
+**`api/app/services/pipeline/stages/render_validation.py`**
+- `MAX_REGENERATION_ATTEMPTS = 2` was defined but never referenced in this file or imported by any other module. `validate_blocks.py` owns the authoritative `MAX_REGEN_ATTEMPTS = 2` constant. Removed the orphaned duplicate.
+
+### Name Collisions Resolved
+
+**`web/src/app/admin/sports/games/[gameId]/gameDetailUtils.tsx`**
+- `formatMetricValue(key: string, value: unknown)` collided with `formatMetricValue(value: number)` in `web/src/lib/utils/formatting.ts`. The two functions have different signatures and semantics (admin computed-field display vs. analytics metric display). Renamed the `gameDetailUtils` version to `formatComputedFieldValue`; updated the single caller in `ComputedFieldsSection.tsx`.
+
+**`api/app/analytics/sports/mlb/matchup.py`**
+- `normalize_probabilities(prob_dict)` collided with `normalize_probabilities(probs, valid_events)` in `probability_provider.py`. The matchup version is module-private (no external callers outside tests). Renamed to `_normalize_matchup_probs`; updated three test imports in `tests/test_analytics.py` to use the new name via alias.

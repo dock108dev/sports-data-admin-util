@@ -2,6 +2,86 @@
 
 ---
 
+## Review Pass 4 — 2026-04-20
+
+Full doc + AIDLC issue cross-reference pass. 64 files audited (up from 47 — 17 new research docs added since Pass 3). Three targeted changes applied.
+
+### Files Changed
+
+#### `ROADMAP.md`
+
+**Problem:** 19 roadmap items remained unchecked despite being confirmed implemented in the `.aidlc/issues/` tracker. The previous doc passes only checked 5 items (Phase 1 MIN_BLOCKS alignment, Phase 2 ScoreObject/PipelineStage/CANCELLED/v1-namespace/story_version).
+
+**Items now checked off:**
+
+| Item | Issue | Evidence |
+|------|-------|----------|
+| Event-driven dispatch on FINAL (replace schedule) | ISSUE-001 | `scraper/sports_scraper/jobs/flow_trigger_tasks.py` — `trigger_flow_for_game` task |
+| ORM `after_flush`/`after_commit` hook | ISSUE-001 | `api/app/db/hooks.py` — `_track_final_transitions` + `_dispatch_final_game_tasks` |
+| Redis `SET NX` lock on `game_id` | ISSUE-001 | `flow_trigger_tasks.py` — `acquire_redis_lock("pipeline_lock:trigger_flow_for_game:{game_id}")` |
+| Golden corpus: 10 games per sport | ISSUE-003 | `**Status**: implemented` in `.aidlc/issues/ISSUE-003.md` |
+| `pytest` CI gate against corpus | ISSUE-004 | `**Status**: implemented` |
+| Coverage validation (score, winner, OT) | ISSUE-005 | `**Status**: implemented` |
+| `mini_box` audit in `validate_blocks.py` | ISSUE-005 | `**Status**: implemented` |
+| Backfill script (7-day window) | ISSUE-001 | `backfill_missing_flows()` in `flow_trigger_tasks.py` |
+| `isLive`/`isFinal`/`isPregame` computed non-nullable | ISSUE-008 | `**Status**: implemented` |
+| camelCase `Field(alias=...)` audit + CI lint | ISSUE-013, ISSUE-027 | Both `**Status**: implemented` |
+| Split auth middleware (consumer vs. admin) | ISSUE-010 | `**Status**: implemented` |
+| JSONB schema validation for `external_ids` | ISSUE-011, ISSUE-028 | Both `**Status**: implemented` |
+| `UNKNOWN` in `GamePhase` enum | ISSUE-014 | `**Status**: implemented` |
+| `NOT NULL` on `TeamSocialPost.game_phase` | ISSUE-015 | `**Status**: implemented` |
+| Evaluate X/Twitter alternative + prototype | ISSUE-017 | `**Status**: implemented` |
+| OTel instrumentation (FastAPI + Celery) | — | `api/app/otel.py` exists; ISSUE-018 extends it |
+| Pipeline stage duration metrics export | ISSUE-018 | `**Status**: implemented` |
+| Alerts (quality, social, odds burn, score mismatch) | ISSUE-020 | `**Status**: implemented` |
+| Replace DB poller with LISTEN/NOTIFY | ISSUE-021 | `**Status**: implemented` |
+
+**Remaining unchecked in Phase 1:** "recap pending" consumer state.
+**Remaining unchecked in Phase 3:** Playwright health probe, embedded post ID DB validation, circuit breaker telemetry, `mediaType` enum enforcement.
+**Remaining unchecked in Phase 4:** Grafana dashboards (2 items), pipeline coverage report job.
+**Remaining unchecked in Phase 5:** Redis Streams pub/sub, sequence tracking on Redis, `useLiveGameScore`/`useLiveOdds` hooks, differential updates, SSE load test.
+**Phase 6:** All items remain pending.
+
+---
+
+#### `docs/aidlc-futures.md` — DELETED
+
+**Problem:** Stale copy of AIDLC futures metadata with incorrect run statistics (`issues_implemented: 49` vs. root `AIDLC_FUTURES.md` which shows `61`) and broken relative links (pointed to `docs/audits/` rather than `audits/` from within the `docs/` directory). Pass 3 intended to "move" the root file here but instead created a mismatched copy. The root `AIDLC_FUTURES.md` is the authoritative version and stays at root.
+
+**Fix:** Deleted `docs/aidlc-futures.md`.
+
+---
+
+#### `docs/research/x-scraping-alternatives.md` — DELETED
+
+**Problem:** Fully redundant with `docs/research/x-twitter-data-alternatives.md`. Both documents covered the same five options (X API v2, Apify, Bright Data, Nitter, Social-Searcher) with nearly identical analysis. `x-twitter-data-alternatives.md` is the more complete version — it includes the hybrid approach architecture diagram, decision tree, and implementation pattern. The ADR (`x-twitter-alternative-decision.md`) already references `x-twitter-data-alternatives.md` as the evaluation source.
+
+**Fix:** Deleted `docs/research/x-scraping-alternatives.md`.
+
+---
+
+#### `docs/research/README.md` — CREATED
+
+**Problem:** 32 research documents had no navigation aid. New contributors had no way to discover which doc to read before implementing a given feature.
+
+**Fix:** Created `docs/research/README.md` with a categorized index organized by topic area: Event-Driven Architecture, Realtime & Pub/Sub, API & Schema Design, Database & Migrations, Narrative Pipeline, Quality & Grading, Social & Ingestion, Observability. Each entry states the question the doc answers.
+
+---
+
+#### `docs/index.md`
+
+**Problem:** No link to the new `docs/research/README.md` from the top-level index.
+
+**Fix:** Added a "Research" section at the bottom of `docs/index.md` linking to `research/README.md`.
+
+---
+
+### Files Audited and Unchanged (this pass)
+
+All 59 remaining docs verified accurate against current codebase and issue tracker. No further issues found.
+
+---
+
 ## Review Pass 2 — 2026-04-19
 
 47 documentation files audited. No files deleted. No files moved. Five targeted fixes applied: two factual corrections in `docs/gameflow/`, three checked-off roadmap items, and stale-resolution annotations in `BRAINDUMP.md`.

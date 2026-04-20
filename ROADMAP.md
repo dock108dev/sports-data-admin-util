@@ -16,16 +16,16 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Every generated flow has a populated `mini_box` for all blocks.
 
 **Deliverables:**
-- [ ] Replace daily 4:30–6:30 AM flow schedule with event-driven dispatch on FINAL transition (+5 min delay for PBP settle). See `docs/research/event-driven-celery-task-dispatch.md`.
-- [ ] Add ORM-level `after_update` hook on `Game.status` transitions that enqueues `generate_flow` Celery task.
-- [ ] Add Redis `SET NX` lock keyed on `game_id` to prevent duplicate dispatches from retry paths.
-- [ ] Build golden corpus: 10 games per sport (NBA, NHL, MLB, NFL, NCAAB) with human-validated narrative outputs. See `docs/research/golden-corpus-construction-methodology.md`.
-- [ ] Add `pytest` CI gate that runs the pipeline against the corpus and diffs outputs against reference on every PR.
-- [ ] Add coverage validation: assert every flow mentions final score, winning team, and OT if applicable. See `docs/research/nlg-coverage-validation-techniques.md`.
-- [ ] Add `mini_box` population audit in `validate_blocks.py` — reject any block missing cumulative stats + segment deltas.
+- [x] Replace daily 4:30–6:30 AM flow schedule with event-driven dispatch on FINAL transition (+5 min delay for PBP settle). See `docs/research/event-driven-celery-task-dispatch.md`.
+- [x] Add ORM-level `after_flush`/`after_commit` hook on `Game.status` transitions that enqueues `generate_flow` Celery task.
+- [x] Add Redis `SET NX` lock keyed on `game_id` to prevent duplicate dispatches from retry paths.
+- [x] Build golden corpus: 10 games per sport (NBA, NHL, MLB, NFL, NCAAB) with human-validated narrative outputs. See `docs/research/golden-corpus-construction-methodology.md`.
+- [x] Add `pytest` CI gate that runs the pipeline against the corpus and diffs outputs against reference on every PR.
+- [x] Add coverage validation: assert every flow mentions final score, winning team, and OT if applicable. See `docs/research/nlg-coverage-validation-techniques.md`.
+- [x] Add `mini_box` population audit in `validate_blocks.py` — reject any block missing cumulative stats + segment deltas.
 - [x] Align block count constraints: MIN=3 (blowouts) enforced in both `block_types.py` and `guardrails.ts`.
 - [ ] Add a "recap pending" consumer-facing state with ETA instead of 404 on missing flows.
-- [ ] Backfill script to regenerate flows for any FINAL game from last 7 days missing a flow.
+- [x] Backfill script to regenerate flows for any FINAL game from last 7 days missing a flow.
 
 ---
 
@@ -41,13 +41,13 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 **Deliverables:**
 - [x] Introduce `ScoreObject` Pydantic model `{home: int, away: int}` and migrate all score-returning endpoints off `[int, int]` tuples. See `docs/research/pydantic-score-object-migration.md`.
 - [x] Delete `_swap_score()` helper once migration complete.
-- [ ] Make `isLive`, `isFinal`, `isPregame` computed non-nullable booleans in `GameSummary`.
-- [ ] Audit all response schemas for missing camelCase `Field(alias=...)` declarations; add lint check.
+- [x] Make `isLive`, `isFinal`, `isPregame` computed non-nullable booleans in `GameSummary`.
+- [x] Audit all response schemas for missing camelCase `Field(alias=...)` declarations; add lint check.
 - [x] Dedupe `PipelineStage` enum: single source of truth in `services/pipeline/models.py`, imported by DB layer.
 - [x] Remove `cancelled`/`canceled` duplicate entry in `GameStatus` enum. Canonical value is `CANCELLED`.
 - [x] Introduce `/api/v1/` router namespace for consumer endpoints. Game flow endpoint live at `/api/v1/games/{id}/flow`.
-- [ ] Split auth middleware: consumer keys vs admin keys with different rate limits.
-- [ ] Add JSONB schema validation for `external_ids`, `external_codes` at write time. See `docs/research/jsonb-schema-validation-postgres.md`.
+- [x] Split auth middleware: consumer keys vs admin keys with different rate limits.
+- [x] Add JSONB schema validation for `external_ids`, `external_codes` at write time. See `docs/research/jsonb-schema-validation-postgres.md`.
 - [x] Document `story_version` vs `blocks_version` semantics; renamed `v2-moments` to `v2-blocks`. See `docs/gameflow/version-semantics.md`.
 
 ---
@@ -63,10 +63,10 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 
 **Deliverables:**
 - [ ] Add Playwright session health probe that runs every 30 min and alerts on cookie expiration. See `docs/research/playwright-session-health-monitoring.md`.
-- [ ] Add `UNKNOWN` value to `GamePhase` enum; update `tweet_mapper.py` to assign it rather than null when phase can't be inferred.
-- [ ] Add `NOT NULL` constraint on `TeamSocialPost.game_phase` via Alembic migration (after backfill).
+- [x] Add `UNKNOWN` value to `GamePhase` enum; update `tweet_mapper.py` to assign it rather than null when phase can't be inferred.
+- [x] Add `NOT NULL` constraint on `TeamSocialPost.game_phase` via Alembic migration (after backfill).
 - [ ] Add DB-side validation in `embedded_tweets.py` — verify `embedded_social_post_id` exists in `TeamSocialPost` before persisting the block.
-- [ ] Evaluate alternative X/Twitter data sources and prototype one. See `docs/research/x-twitter-data-alternatives.md`.
+- [x] Evaluate alternative X/Twitter data sources and prototype one. See `docs/research/x-twitter-data-alternatives.md`.
 - [ ] Add circuit breaker telemetry (tripped count, last trip reason) to the admin dashboard.
 - [ ] Drop unused `likesCount`, `retweetsCount`, `repliesCount` from `SocialPostEntry` response or add them to frontend type.
 - [ ] Validate `mediaType` as enum `"video" | "image" | null` in both Pydantic model and SQL constraint.
@@ -82,14 +82,14 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Pagerable alerts exist for each trust-killing failure mode.
 
 **Deliverables:**
-- [ ] Instrument FastAPI + Celery with OpenTelemetry traces/metrics. See `docs/research/opentelemetry-for-pipeline-observability.md`.
-- [ ] Export pipeline stage durations, regeneration count, fallback rate per sport.
+- [x] Instrument FastAPI + Celery with OpenTelemetry traces/metrics. See `docs/research/opentelemetry-for-pipeline-observability.md`.
+- [x] Export pipeline stage durations, regeneration count, fallback rate per sport.
 - [ ] Grafana dashboard: "% of final games from yesterday with flows" by sport.
 - [ ] Grafana dashboard: quality score histogram + fallback rate time series.
-- [ ] Alert: quality score p50 drops >10 points day-over-day.
-- [ ] Alert: social collection success rate below 90% over 2h window.
-- [ ] Alert: Odds API credit burn projects to exceed weekly budget (threshold: 80%).
-- [ ] Alert: any flow persisted with score mismatch vs authoritative final score.
+- [x] Alert: quality score p50 drops >10 points day-over-day.
+- [x] Alert: social collection success rate below 90% over 2h window.
+- [x] Alert: Odds API credit burn projects to exceed weekly budget (threshold: 80%).
+- [x] Alert: any flow persisted with score mismatch vs authoritative final score.
 - [ ] Add pipeline coverage report job (daily) — writes gap summary to DB for admin UI.
 
 ---
@@ -103,7 +103,7 @@ Phases are sequenced by dependency, not calendar. Each checkbox is scoped to be 
 - Live scores and odds propagate to browser in <5s without client polling.
 
 **Deliverables:**
-- [ ] Replace DB poller in `realtime/poller.py` with Postgres `LISTEN/NOTIFY` triggered by ingestion writers. See `docs/research/postgres-listen-notify-python.md` and `docs/research/celery-event-driven-vs-beat-scheduling.md`.
+- [x] Replace DB poller in `realtime/poller.py` with Postgres `LISTEN/NOTIFY` triggered by ingestion writers. See `docs/research/postgres-listen-notify-python.md` and `docs/research/celery-event-driven-vs-beat-scheduling.md`.
 - [ ] Move pub/sub manager from in-memory to Redis Streams for multi-process fanout. See `docs/research/redis-pubsub-vs-streams-for-realtime.md`.
 - [ ] Preserve sequence tracking + boot epoch semantics on Redis-backed manager.
 - [ ] Build `useLiveGameScore(gameId)` React hook over SSE with reconnection + backfill. See `docs/research/websocket-sse-react-integration-patterns.md`.

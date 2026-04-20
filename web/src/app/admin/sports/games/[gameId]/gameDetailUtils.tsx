@@ -183,7 +183,7 @@ export const OUTCOME_KEYS = new Set(["spread_outcome_label", "total_outcome_labe
 export const GREEN_OUTCOMES = new Set(["home_cover", "over", "favorite_won", "home_win", "away_win"]);
 export const RED_OUTCOMES = new Set(["away_cover", "under", "underdog_won", "upset"]);
 
-export function formatMetricValue(key: string, value: unknown): string {
+export function formatComputedFieldValue(key: string, value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (key.includes("implied")) return `${(value * 100).toFixed(1)}%`;
