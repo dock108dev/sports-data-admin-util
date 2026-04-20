@@ -31,6 +31,28 @@ os.environ.setdefault("ENVIRONMENT", "development")
 _MISSING = object()
 
 
+def _ensure_golden_corpus() -> None:
+    """Regenerate the golden corpus fixtures if they aren't present.
+
+    The generator output isn't checked in; CI runs this so the tests in
+    test_golden_corpus.py find their fixtures.
+    """
+    import subprocess
+
+    corpus_dir = Path(__file__).parent / "fixtures" / "corpus"
+    if (corpus_dir / "corpus_metadata.json").exists():
+        return
+    (corpus_dir / "reference").mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [sys.executable, str(corpus_dir / "generate_corpus.py")],
+        check=True,
+        capture_output=True,
+    )
+
+
+_ensure_golden_corpus()
+
+
 @pytest.fixture(autouse=True)
 def restore_runtime_module_stubs():
     """Prevent per-test module monkeypatches from leaking across test files."""
