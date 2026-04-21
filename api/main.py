@@ -25,7 +25,7 @@ from app.realtime.poller import db_poller
 from app.realtime.streams import RedisStreamsBridge
 from app.realtime.sse import router as sse_router
 from app.realtime.ws import router as ws_router
-from app.routers import auth, fairbet, preferences, simulator, social, sports
+from app.routers import auth, fairbet, onboarding, preferences, simulator, social, sports
 from app.routers.v1 import router as v1_router
 from app.routers.model_odds import router as model_odds_router
 from app.routers.golf import router as golf_router
@@ -209,6 +209,12 @@ app.include_router(v1_router)
 # ---------------------------------------------------------------------------
 app.include_router(auth.router)
 app.include_router(preferences.router)
+
+# ---------------------------------------------------------------------------
+# Onboarding — PUBLIC (no auth). Prospect-facing "claim your club" form.
+# Rate-limited per-IP via RateLimitMiddleware's onboarding-strict tier.
+# ---------------------------------------------------------------------------
+app.include_router(onboarding.router)
 
 # ---------------------------------------------------------------------------
 # Public / Guest-accessible endpoints (API key required, no role gate)

@@ -43,6 +43,12 @@ _AUTH_STRICT_PREFIXES = (
 _AUTH_STRICT_LIMIT = 10
 _AUTH_STRICT_WINDOW = 60
 
+# Onboarding endpoints are publicly reachable (no API key) and accept
+# prospect submissions, so we cap them aggressively to deter bot floods.
+_ONBOARDING_STRICT_PREFIXES = ("/api/onboarding/",)
+_ONBOARDING_STRICT_LIMIT = 5
+_ONBOARDING_STRICT_WINDOW = 3600  # 5 requests per hour per IP
+
 _ADMIN_PREFIX = "/api/admin/"
 _FAIRBET_PREFIX = "/api/fairbet/odds"
 
@@ -58,6 +64,8 @@ class RateLimitMiddleware:
         self._auth_requests: dict[str, deque[float]] = defaultdict(deque)
         # Admin-specific buckets (keyed by client IP).
         self._admin_requests: dict[str, deque[float]] = defaultdict(deque)
+        # Onboarding-specific buckets (keyed by client IP).
+        self._onboarding_requests: dict[str, deque[float]] = defaultdict(deque)
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":
@@ -90,6 +98,28 @@ class RateLimitMiddleware:
                 return
 
             auth_times.append(now)
+
+        # --- Onboarding-strict tier (public, prospect-facing forms) ---
+        if any(path.startswith(p) for p in _ONBOARDING_STRICT_PREFIXES):
+            onboarding_times = self._onboarding_requests[client_ip]
+            while (
+                onboarding_times
+                and onboarding_times[0] <= now - _ONBOARDING_STRICT_WINDOW
+            ):
+                onboarding_times.popleft()
+
+            if len(onboarding_times) >= _ONBOARDING_STRICT_LIMIT:
+                response = JSONResponse(
+                    {"detail": "Too many submissions. Please try again later."},
+                    status_code=429,
+                    headers={"Retry-After": str(_ONBOARDING_STRICT_WINDOW)},
+                )
+                await response(scope, receive, send)
+                return
+
+            onboarding_times.append(now)
+            await self.app(scope, receive, send)
+            return
 
         # --- Admin tier (separate from global; does not fall through) ---
         if path.startswith(_ADMIN_PREFIX):

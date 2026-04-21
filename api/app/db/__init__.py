@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from .base import Base
 from . import hooks as _hooks  # noqa: F401 — registers ORM event listeners
 from . import telemetry as _telemetry  # noqa: F401 — registers CircuitBreakerTripEvent mapper
+from .onboarding import ClubClaim  # noqa: F401 — register ORM model for Alembic autogenerate
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -94,4 +95,11 @@ async def close_db() -> None:
         _engine = None
 
 
-__all__ = ["Base", "AsyncSession", "get_db", "get_async_session", "close_db"]
+__all__ = [
+    "Base",
+    "AsyncSession",
+    "ClubClaim",
+    "get_db",
+    "get_async_session",
+    "close_db",
+]

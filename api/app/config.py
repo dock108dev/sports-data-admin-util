@@ -106,6 +106,12 @@ class Settings(BaseSettings):
         default="http://localhost:3000", alias="FRONTEND_URL"
     )
 
+    # Onboarding — prospect-facing "claim your club" submissions email here.
+    # If unset, submissions are persisted but no notification email is sent.
+    onboarding_notification_email: str | None = Field(
+        default=None, alias="ONBOARDING_NOTIFICATION_EMAIL"
+    )
+
     # OpenAI Configuration (SSOT for model defaults — docker-compose defers to these)
     # AI is used for interpretation/narration only, never for ordering/filtering
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
