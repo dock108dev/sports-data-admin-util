@@ -266,7 +266,7 @@ app.include_router(preferences.router)
 app.include_router(clubs_router)
 
 # ---------------------------------------------------------------------------
-# Club branding — PUT /api/clubs/:id/branding (owner role, premium plan).
+# Club branding — PUT /api/v1/clubs/:id/branding (owner role, premium plan).
 # ---------------------------------------------------------------------------
 app.include_router(club_branding_router)
 

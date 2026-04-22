@@ -65,9 +65,9 @@ class TestPIIRedaction:
         assert result.get("raw_token") == "[REDACTED]"
 
     def test_non_sensitive_field_passes_through(self) -> None:
-        result = self._format(club_id=42, path="/api/clubs")
+        result = self._format(club_id=42, path="/api/v1/clubs")
         assert result.get("club_id") == 42
-        assert result.get("path") == "/api/clubs"
+        assert result.get("path") == "/api/v1/clubs"
 
     def test_email_not_present_in_log_record_by_default(self) -> None:
         """A plain log record must not contain an email field at all."""

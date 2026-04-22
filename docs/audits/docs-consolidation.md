@@ -31,7 +31,7 @@ doc pass.
 | File | Change |
 |------|--------|
 | `docs/index.md` | Added `roadmap.md` under **Getting Started**. Added entries for `audits/security-audit.md`, `audits/cleanup-report.md`, and `audits/aidlc-futures.md` (these files exist on disk and were previously unlinked from the index). |
-| `docs/api.md` | Added a new **Club Provisioning & Commerce** section at the end listing the 9 endpoints (`/api/onboarding/*`, `/api/commerce/checkout`, `/api/webhooks/stripe`, `/api/clubs/{slug}`, `/api/billing/portal`, `/api/clubs/{id}/branding`, `/api/admin/audit`) with a pointer to `docs/clubs.md` for full request/response shapes. Closes the gap called out as "Remaining Gaps" in the prior pass. |
+| `docs/api.md` | Added a new **Club Provisioning & Commerce** section at the end listing the 9 endpoints (`/api/onboarding/*`, `/api/v1/commerce/checkout`, `/api/webhooks/stripe`, `/api/v1/clubs/{slug}`, `/api/v1/billing/portal`, `/api/v1/clubs/{id}/branding`, `/api/admin/audit`) with a pointer to `docs/clubs.md` for full request/response shapes. Closes the gap called out as "Remaining Gaps" in the prior pass. |
 
 ---
 

@@ -19,7 +19,7 @@ from app.dependencies.roles import require_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/billing", tags=["billing"])
+router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
 class PortalRequest(BaseModel):
