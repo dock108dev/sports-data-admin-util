@@ -193,7 +193,7 @@ async def send_invite(
     """
     if body.role not in _VALID_INVITE_ROLES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"Invalid role '{body.role}'. Must be one of: {', '.join(sorted(_VALID_INVITE_ROLES))}",
         )
 

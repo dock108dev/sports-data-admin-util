@@ -225,7 +225,7 @@ class TestHandleInvoicePaymentFailed:
 
         with (
             patch("app.services.audit.emit"),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=lambda c: c.close()),
         ):
             self._run(_handle_invoice_payment_failed(db, event))
 
@@ -237,7 +237,7 @@ class TestHandleInvoicePaymentFailed:
 
         with (
             patch("app.services.audit.emit"),
-            patch("asyncio.create_task") as mock_task,
+            patch("asyncio.create_task", side_effect=lambda c: c.close()) as mock_task,
         ):
             self._run(_handle_invoice_payment_failed(db, event))
 
@@ -250,7 +250,7 @@ class TestHandleInvoicePaymentFailed:
 
         with (
             patch("app.services.audit.emit"),
-            patch("asyncio.create_task") as mock_task,
+            patch("asyncio.create_task", side_effect=lambda c: c.close()) as mock_task,
         ):
             self._run(_handle_invoice_payment_failed(db, event))
 
@@ -263,7 +263,7 @@ class TestHandleInvoicePaymentFailed:
 
         with (
             patch("app.services.audit.emit"),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=lambda c: c.close()),
         ):
             self._run(_handle_invoice_payment_failed(db, event))
 
@@ -275,7 +275,7 @@ class TestHandleInvoicePaymentFailed:
 
         with (
             patch("app.services.audit.emit") as mock_emit,
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=lambda c: c.close()),
         ):
             self._run(_handle_invoice_payment_failed(db, event))
 

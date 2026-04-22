@@ -259,7 +259,7 @@ async def claim_session(
         assert_can_transition(session.status, SessionStatus.CLAIMED)
     except InvalidTransitionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail={"error": "invalid_transition", "message": str(exc)},
         ) from exc
 

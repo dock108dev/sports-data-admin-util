@@ -116,7 +116,7 @@ class TestAuditService:
         """emit() calls asyncio.create_task with the write coroutine."""
         import app.services.audit as svc
 
-        with patch("asyncio.create_task") as mock_create:
+        with patch("asyncio.create_task", side_effect=lambda c: c.close()) as mock_create:
             svc.emit(
                 "club_provisioned",
                 actor_type="system",

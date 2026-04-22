@@ -218,7 +218,7 @@ class TestRequestIdPropagation:
 
         captured: list = []
 
-        with patch("asyncio.create_task") as mock_task:
+        with patch("asyncio.create_task", side_effect=lambda c: c.close()) as mock_task:
             mock_task.side_effect = lambda coro: captured.append(coro) or MagicMock()
 
             token = request_id_var.set("test-req-id-123")
@@ -263,7 +263,7 @@ class TestRequestIdPropagation:
         captured: list = []
 
         try:
-            with patch("asyncio.create_task") as mock_task:
+            with patch("asyncio.create_task", side_effect=lambda c: c.close()) as mock_task:
                 mock_task.side_effect = lambda coro: captured.append(coro) or MagicMock()
                 svc.emit(
                     "club_provisioned",
