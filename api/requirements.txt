@@ -29,3 +29,6 @@ opentelemetry-instrumentation-fastapi==0.50b0
 opentelemetry-instrumentation-sqlalchemy==0.50b0
 opentelemetry-instrumentation-celery==0.50b0
 stripe>=7.0.0
+prometheus_client>=0.20.0
+# HTML sanitization for free-text user fields (ISSUE-025)
+bleach>=6.1.0
