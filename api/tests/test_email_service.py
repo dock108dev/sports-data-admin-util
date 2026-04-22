@@ -261,7 +261,7 @@ class TestMagicLinkEmail:
                 )
             )
 
-        assert "custom.example.com" in captured[0]
+        assert "https://custom.example.com/auth/magic-link?token=tok" in captured[0]
 
     def test_magic_link_subject(self) -> None:
         from app.services import email as email_mod
@@ -362,8 +362,7 @@ class TestWelcomeEmail:
 
         body = captured[0]
         assert "Pebble Beach GC" in body
-        assert "pebble-beach-gc" in body
-        assert "app.example.com" in body
+        assert "https://app.example.com/clubs/pebble-beach-gc" in body
 
     def test_welcome_subject_includes_club_name(self) -> None:
         from app.services import email as email_mod
