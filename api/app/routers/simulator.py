@@ -35,20 +35,8 @@ from app.analytics.services.profile_service import (
     get_team_rolling_profile,
     profile_to_probabilities,
 )
-from app.analytics.sports.mlb.constants import MLB_TEAM_ABBRS as _MLB_TEAM_ABBRS
-from app.analytics.sports.nba.constants import NBA_TEAM_ABBRS as _NBA_TEAM_ABBRS
-from app.analytics.sports.nhl.constants import NHL_TEAM_ABBRS as _NHL_TEAM_ABBRS
+from app.analytics.sports.team_filters import get_canonical_abbrs
 from app.db import get_db
-
-# Canonical team-abbreviation filters per sport. Used to exclude minor-league,
-# all-star, exhibition, and cross-sport rows that may exist in the DB under
-# the same league. NCAAB is omitted: the league has 350+ D-I teams and no
-# practical canonical list — we rely on league_id alone there.
-_CANONICAL_TEAM_ABBRS: dict[str, frozenset[str]] = {
-    "mlb": _MLB_TEAM_ABBRS,
-    "nba": _NBA_TEAM_ABBRS,
-    "nhl": _NHL_TEAM_ABBRS,
-}
 
 _ALIAS_CFG = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -158,10 +146,10 @@ class TeamsResponse(BaseModel):
     count: int
 
 
-# ---------------------------------------------------------------------------
-# Include MLB sub-router BEFORE generic {sport} routes are defined,
-# so FastAPI matches /mlb/teams before /{sport}/teams.
-# ---------------------------------------------------------------------------
+# MLB sub-router is included before the generic {sport} routes so FastAPI
+# matches POST /mlb (lineup-aware MLB endpoint) before POST /{sport}.
+# /mlb/teams used to live in the sub-router as a duplicate; it was deleted in
+# favor of the SSOT generic handler below.
 from app.routers.simulator_mlb import router as _mlb_router  # noqa: E402
 
 router.include_router(_mlb_router)
@@ -232,7 +220,7 @@ async def list_sport_teams(
     # Filter by canonical team abbreviations to exclude cross-sport/minor-league
     # rows accidentally tagged with this league_id. NCAAB skipped (no canonical
     # list — relies on league_id alone).
-    canonical_abbrs = _CANONICAL_TEAM_ABBRS.get(sport_lower)
+    canonical_abbrs = get_canonical_abbrs(sport_lower)
     if canonical_abbrs:
         stmt = stmt.where(SportsTeam.abbreviation.in_(canonical_abbrs))
 

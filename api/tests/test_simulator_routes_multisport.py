@@ -165,8 +165,6 @@ class TestCanonicalAbbrFilter:
         return mock_db
 
     def test_mlb_filters_by_canonical_abbrs(self) -> None:
-        from app.analytics.sports.mlb.constants import MLB_TEAM_ABBRS
-
         mock_db = self._make_db()
         client = _make_client(mock_db)
         resp = client.get("/api/simulator/mlb/teams")
@@ -502,10 +500,14 @@ class TestSimulateGameValidation:
 # ---------------------------------------------------------------------------
 
 
-class TestMLBTeamsBackwardCompat:
-    """GET /api/simulator/mlb/teams — existing endpoint."""
+class TestMLBTeamsRoute:
+    """GET /api/simulator/mlb/teams — served by the SSOT /{sport}/teams handler.
 
-    def test_returns_teams(self) -> None:
+    The legacy MLB-specific handler was deleted; this URL now routes through
+    the generic handler and emits the richer SSOT shape (includes ``sport``).
+    """
+
+    def test_returns_teams_with_sport_field(self) -> None:
         mock_db = AsyncMock()
         mock_row = MagicMock()
         mock_row.abbreviation = "NYY"
@@ -520,9 +522,10 @@ class TestMLBTeamsBackwardCompat:
         resp = client.get("/api/simulator/mlb/teams")
         assert resp.status_code == 200
         data = resp.json()
-        # The original MLB endpoint returns teams/count (no sport field)
+        assert data["sport"] == "mlb"
         assert data["count"] == 1
         assert data["teams"][0]["abbreviation"] == "NYY"
+        assert data["teams"][0]["sport"] == "mlb"
 
 
 class TestMLBSimulateBackwardCompat:

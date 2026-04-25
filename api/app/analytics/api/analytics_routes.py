@@ -13,6 +13,7 @@ are split across sub-modules for maintainability:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -27,11 +28,10 @@ from app.analytics.services.profile_service import (
     get_team_roster,
     profile_to_probabilities,
 )
+from app.analytics.sports.team_filters import get_canonical_abbrs
 from app.db import get_db
 
 from ._simulation_helpers import _build_lineup_context, _predict_with_game_model
-
-from app.analytics.sports.mlb.constants import MLB_TEAM_ABBRS as _MLB_TEAM_ABBRS
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,11 @@ async def post_simulate(
             req, game_context, profile_meta, home_profile, away_profile, db,
         )
 
-    result = _service.run_full_simulation(
+    # CPU-bound Monte Carlo loop — offload to a worker thread so the event
+    # loop stays free for other requests. SSOT for this is mirrored in
+    # api/app/routers/simulator.py and simulator_mlb.py.
+    result = await asyncio.to_thread(
+        _service.run_full_simulation,
         sport=req.sport,
         game_context=game_context,
         iterations=req.iterations,
@@ -394,9 +398,12 @@ async def get_sport_teams(
         .order_by(SportsTeam.name)
     )
 
-    # For MLB, also filter by canonical team abbrs
-    if sport_lower == "mlb":
-        stmt = stmt.where(SportsTeam.abbreviation.in_(_MLB_TEAM_ABBRS))
+    # Filter by canonical team abbreviations for sports that have one. Mirrors
+    # the SSOT in api/app/routers/simulator.py — see app/analytics/sports/
+    # team_filters.py.
+    canonical_abbrs = get_canonical_abbrs(sport_lower)
+    if canonical_abbrs:
+        stmt = stmt.where(SportsTeam.abbreviation.in_(canonical_abbrs))
 
     result = await db.execute(stmt)
     rows = result.all()
@@ -417,47 +424,13 @@ async def get_sport_teams(
 async def get_mlb_teams(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """List MLB teams with count of games that have advanced stats data.
+    """List MLB teams. Thin delegate to the SSOT generic handler.
 
-    Used by the simulator UI to populate team dropdowns. Only returns
-    teams that have an abbreviation set.
+    The dedicated body was deleted: see ``get_sport_teams`` for the single
+    implementation. This URL is kept because the web client still calls it
+    (``web/src/lib/api/analytics.ts: listMLBTeams``).
     """
-    from sqlalchemy import func as sa_func
-    from sqlalchemy import select as sa_select
-
-    from app.db.mlb_advanced import MLBGameAdvancedStats
-    from app.db.sports import SportsTeam
-
-    stmt = (
-        sa_select(
-            SportsTeam.id,
-            SportsTeam.name,
-            SportsTeam.short_name,
-            SportsTeam.abbreviation,
-            sa_func.count(MLBGameAdvancedStats.id).label("games_with_stats"),
-        )
-        .outerjoin(
-            MLBGameAdvancedStats,
-            MLBGameAdvancedStats.team_id == SportsTeam.id,
-        )
-        .where(SportsTeam.abbreviation.in_(_MLB_TEAM_ABBRS))
-        .group_by(SportsTeam.id)
-        .order_by(SportsTeam.name)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
-
-    teams = [
-        {
-            "id": row.id,
-            "name": row.name,
-            "short_name": row.short_name,
-            "abbreviation": row.abbreviation,
-            "games_with_stats": row.games_with_stats,
-        }
-        for row in rows
-    ]
-    return {"teams": teams, "count": len(teams)}
+    return await get_sport_teams("mlb", db=db)
 
 
 @router.get("/mlb-roster")
