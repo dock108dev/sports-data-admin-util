@@ -47,7 +47,7 @@ services:
       retries: 5
 
   api:
-    image: ghcr.io/dock108dev/sports-data-admin-util-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-api:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -102,7 +102,7 @@ services:
   # General-purpose worker: batch sims, flow generation, outcomes, experiments orchestrator.
   # Always has capacity — never blocked by training.
   api-worker:
-    image: ghcr.io/dock108dev/sports-data-admin-util-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-api:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -139,7 +139,7 @@ services:
 
   # Training worker: only model training tasks. Lowest priority — never blocks other work.
   api-training-worker:
-    image: ghcr.io/dock108dev/sports-data-admin-util-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-api:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -166,7 +166,7 @@ services:
       - app
 
   scraper:
-    image: ghcr.io/dock108dev/sports-data-admin-util-scraper:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-scraper:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -206,7 +206,7 @@ services:
       retries: 5
 
   scraper-beat:
-    image: ghcr.io/dock108dev/sports-data-admin-util-scraper:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-scraper:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -240,7 +240,7 @@ services:
       - app
 
   social-scraper:
-    image: ghcr.io/dock108dev/sports-data-admin-util-scraper:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-scraper:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -274,7 +274,7 @@ services:
     # No healthcheck needed - social scraping is best-effort
 
   social-bulk:
-    image: ghcr.io/dock108dev/sports-data-admin-util-scraper:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-scraper:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -307,7 +307,7 @@ services:
     # No healthcheck needed - social scraping is best-effort
 
   migrate:
-    image: ghcr.io/dock108dev/sports-data-admin-util-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-api:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -329,7 +329,7 @@ services:
       - app  # Needed for external API calls during data migrations
 
   web:
-    image: ghcr.io/dock108dev/sports-data-admin-util-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/dock108dev/sda-web:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/web.Dockerfile

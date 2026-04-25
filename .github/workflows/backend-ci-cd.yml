@@ -478,7 +478,13 @@ jobs:
             docker compose --profile prod run --rm migrate
 
             echo "Starting services..."
-            docker compose --profile prod up -d --remove-orphans
+            # --force-recreate is required because we use :latest tags. Without
+            # it, compose hashes the service config (which includes the tag
+            # string but not the resolved image SHA) and decides "no change →
+            # keep running container", silently skipping every deploy where
+            # only the underlying image content changed. See the "deploys
+            # 2-days-old container" incident in the deploy log.
+            docker compose --profile prod up -d --remove-orphans --force-recreate
 
             echo "Verifying API health..."
             for i in $(seq 1 30); do
@@ -501,6 +507,56 @@ jobs:
             if [ "$FINAL_STATUS" != "healthy" ]; then
               echo "❌ API did not become healthy within 150s (status: $FINAL_STATUS)"
               docker logs sports-api --tail=40 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "Verifying containers are running the just-pulled images..."
+            # Defense against the silent-no-op-deploy class of bugs: for each
+            # long-running app container, read the image tag it was started
+            # with, resolve that tag to the SHA currently in the local image
+            # store, and compare to the SHA the container is actually running
+            # on. Mismatch → compose declined to recreate (or pulled from a
+            # different image namespace than it runs from). Either way: fail.
+            #
+            # Using the container's own `Config.Image` as the source of truth
+            # keeps this check working regardless of image-naming conventions
+            # in compose.yaml.
+            check_image_sha() {
+              local container="$1"
+              local image_tag pulled_sha running_sha
+              image_tag=$(docker inspect "$container" --format='{{.Config.Image}}' 2>/dev/null || echo "")
+              if [ -z "$image_tag" ]; then
+                echo "❌ Could not resolve image tag for $container (container missing?)"
+                return 1
+              fi
+              pulled_sha=$(docker image inspect "$image_tag" --format='{{.Id}}' 2>/dev/null || echo "")
+              running_sha=$(docker inspect "$container" --format='{{.Image}}' 2>/dev/null || echo "")
+              if [ -z "$pulled_sha" ] || [ -z "$running_sha" ]; then
+                echo "❌ Could not resolve image SHA for $container ($image_tag)"
+                return 1
+              fi
+              if [ "$pulled_sha" != "$running_sha" ]; then
+                echo "❌ $container is running a stale image ($image_tag)."
+                echo "    pulled:  $pulled_sha"
+                echo "    running: $running_sha"
+                return 1
+              fi
+              echo "  ✅ $container ($image_tag) matches local store"
+              return 0
+            }
+
+            STALE=0
+            for container in sports-api sports-web sports-scraper; do
+              if ! check_image_sha "$container"; then
+                STALE=1
+              fi
+            done
+            if [ "$STALE" -ne 0 ]; then
+              echo "❌ One or more containers are running stale images. Common causes:"
+              echo "   - \`docker compose up -d\` skipped recreation because :latest"
+              echo "     tag didn't change (need --force-recreate)."
+              echo "   - compose.yaml pulls from a different image namespace than"
+              echo "     the build job pushes to."
               exit 1
             fi
 

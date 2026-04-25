@@ -23,7 +23,7 @@ mkdir -p /opt/sports-data-api
 cd /opt/sports-data-api
 
 # Clone the repository
-git clone https://github.com/dock108/sports-data-admin-util.git .
+git clone https://github.com/dock108dev/sda.git .
 
 # Create the production .env file (from .env.example)
 nano infra/.env
