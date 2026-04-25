@@ -88,11 +88,7 @@ def should_bypass_cache(request: Request | None) -> bool:
     if request is None:
         return False
     headers = request.headers
-    if headers.get("authorization"):
-        return True
-    if headers.get("cookie"):
-        return True
-    return False
+    return bool(headers.get("authorization") or headers.get("cookie"))
 
 
 def get_cached(key: str) -> dict[str, Any] | None:

@@ -8,7 +8,11 @@ from typing import Any
 
 from ...db.odds import FairbetGameOddsWork
 from ...services.ev import american_to_implied
-from ...services.ev_config import SHARP_REF_MAX_AGE_SECONDS, get_fairbet_debug_game_ids, get_strategy
+from ...services.ev_config import (
+    SHARP_REF_MAX_AGE_SECONDS,
+    get_fairbet_debug_game_ids,
+    get_strategy,
+)
 from ...services.fairbet_display import (
     book_abbreviation,
     build_explanation_steps,

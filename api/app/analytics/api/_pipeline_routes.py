@@ -258,13 +258,13 @@ async def list_batch_simulate_jobs(
     try:
         result = await db.execute(stmt)
         jobs = list(result.scalars().all())
-    except Exception:
+    except Exception as exc:
         logger.exception("batch_sim_jobs_list_db_error", extra={"sport": sport})
         raise HTTPException(
             status_code=503,
             detail="Batch sim job listing temporarily unavailable",
             headers={"Retry-After": "5"},
-        )
+        ) from exc
 
     serialized: list[dict[str, Any]] = []
     for job in jobs:
@@ -293,25 +293,25 @@ async def get_batch_simulate_job(
 
     try:
         job = await db.get(AnalyticsBatchSimJob, job_id)
-    except Exception:
+    except Exception as exc:
         logger.exception("batch_sim_job_get_db_error", extra={"job_id": job_id})
         raise HTTPException(
             status_code=503,
             detail="Batch sim job lookup temporarily unavailable",
             headers={"Retry-After": "5"},
-        )
+        ) from exc
     if job is None:
         raise HTTPException(status_code=404, detail="Batch sim job not found")
     try:
         return _serialize_batch_sim_job(job, include_diagnostics=True)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "batch_sim_job_serialization_failed", extra={"job_id": job_id}
         )
         raise HTTPException(
             status_code=500,
             detail="Failed to serialize batch sim job",
-        )
+        ) from exc
 
 
 @router.delete("/batch-simulate-job/{job_id}", dependencies=[Depends(require_admin)])

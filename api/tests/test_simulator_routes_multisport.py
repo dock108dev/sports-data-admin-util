@@ -244,6 +244,7 @@ class TestSimulatorThreadOffload:
         import time
 
         import httpx
+
         from app.routers import simulator as sim_module
 
         per_call_seconds = 0.25
@@ -501,11 +502,7 @@ class TestSimulateGameValidation:
 
 
 class TestMLBTeamsRoute:
-    """GET /api/simulator/mlb/teams — served by the SSOT /{sport}/teams handler.
-
-    The legacy MLB-specific handler was deleted; this URL now routes through
-    the generic handler and emits the richer SSOT shape (includes ``sport``).
-    """
+    """GET /api/simulator/mlb/teams — served by the generic /{sport}/teams handler."""
 
     def test_returns_teams_with_sport_field(self) -> None:
         mock_db = AsyncMock()

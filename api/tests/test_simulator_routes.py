@@ -1,10 +1,7 @@
-"""Route-level tests for the MLB-specific simulator endpoint.
+"""Route-level tests for ``POST /api/simulator/mlb`` (lineup-aware MLB sim).
 
-Covers: POST /api/simulator/mlb (with lineup-aware simulation).
-
-GET /api/simulator/{sport}/teams (including mlb) is covered exhaustively in
-``test_simulator_routes_multisport.py`` — the legacy MLB-specific
-``/mlb/teams`` handler was deleted.
+``GET /api/simulator/{sport}/teams`` (including mlb) is covered in
+``test_simulator_routes_multisport.py``.
 """
 
 from __future__ import annotations

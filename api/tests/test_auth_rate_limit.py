@@ -1,15 +1,12 @@
 """Tests for auth-specific rate limiting."""
 
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.config import settings
 from app.middleware.rate_limit import (
-    RateLimitMiddleware,
     _AUTH_STRICT_LIMIT,
-    _AUTH_STRICT_WINDOW,
+    RateLimitMiddleware,
 )
 
 

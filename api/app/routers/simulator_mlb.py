@@ -26,7 +26,6 @@ from app.analytics.services.profile_service import (
     profile_to_pa_probabilities,
 )
 from app.db import get_db
-
 from app.routers.simulator_models import ScoreFrequency
 
 _ALIAS_CFG = ConfigDict(alias_generator=to_camel, populate_by_name=True)
@@ -227,10 +226,6 @@ class MLBSimulationResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
-# /mlb/teams used to live here as a duplicate of the generic /{sport}/teams
-# handler. It was deleted: the generic SSOT in simulator.py now handles MLB
-# correctly via the canonical-abbr dispatch table and includes the richer
-# response shape (sport field, NCAAB/NHL/NBA support).
 
 
 @router.post(

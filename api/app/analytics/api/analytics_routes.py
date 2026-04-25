@@ -36,17 +36,17 @@ from ._simulation_helpers import _build_lineup_context, _predict_with_game_model
 logger = logging.getLogger(__name__)
 
 # Re-export serializers used by tests
+from ._backtest_routes import router as _backtest_router
 from ._calibration_routes import (  # noqa: F401
     _serialize_degradation_alert,
     _serialize_prediction_outcome,
 )
-from ._backtest_routes import router as _backtest_router
 from ._calibration_routes import router as _calibration_router
 from ._experiment_routes import router as _experiment_router
 from ._feature_routes import router as _feature_router
 from ._forecast_routes import router as _forecast_router
-from ._model_routes import router as _model_router
 from ._game_theory_routes import router as _game_theory_router
+from ._model_routes import router as _model_router
 from ._pipeline_routes import _serialize_batch_sim_job  # noqa: F401
 from ._pipeline_routes import router as _pipeline_router
 
@@ -424,12 +424,8 @@ async def get_sport_teams(
 async def get_mlb_teams(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """List MLB teams. Thin delegate to the SSOT generic handler.
-
-    The dedicated body was deleted: see ``get_sport_teams`` for the single
-    implementation. This URL is kept because the web client still calls it
-    (``web/src/lib/api/analytics.ts: listMLBTeams``).
-    """
+    """List MLB teams. Thin delegate kept for the web client's
+    ``listMLBTeams`` call; new callers should use ``/{sport}/teams``."""
     return await get_sport_teams("mlb", db=db)
 
 

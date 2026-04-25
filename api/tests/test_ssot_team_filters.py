@@ -18,7 +18,6 @@ import pytest
 from app.analytics.sports import team_filters
 from app.routers import simulator, simulator_mlb
 
-
 _REPO_ROOT = Path(__file__).resolve().parents[1] / "app"
 
 

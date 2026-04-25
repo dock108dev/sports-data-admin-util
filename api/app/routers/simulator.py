@@ -64,7 +64,6 @@ _SUPPORTED_SPORTS = frozenset(_SPORT_ADVANCED_STATS.keys())
 
 from app.routers.simulator_models import ScoreFrequency  # noqa: F401 — re-exported
 
-
 # ---------------------------------------------------------------------------
 # Generic multi-sport request / response models
 # ---------------------------------------------------------------------------
@@ -147,9 +146,7 @@ class TeamsResponse(BaseModel):
 
 
 # MLB sub-router is included before the generic {sport} routes so FastAPI
-# matches POST /mlb (lineup-aware MLB endpoint) before POST /{sport}.
-# /mlb/teams used to live in the sub-router as a duplicate; it was deleted in
-# favor of the SSOT generic handler below.
+# matches POST /mlb (lineup-aware) before POST /{sport}.
 from app.routers.simulator_mlb import router as _mlb_router  # noqa: E402
 
 router.include_router(_mlb_router)
